@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/favicon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>HEIS SAC</title>
+    <!-- Tipografías Oficiales HEIS SAC Autohospedadas (100% Offline: Plus Jakarta Sans, Sora, JetBrains Mono) -->
+    <link rel="stylesheet" href="/fonts/fonts.css" />
+    <script>
+      // Banner diagnóstico en caso de cualquier error en ejecución
+      window.addEventListener('error', function(event) {
+        var existing = document.getElementById('heis-runtime-error');
+        if (existing) return;
+        var div = document.createElement('div');
+        div.id = 'heis-runtime-error';
+        div.style = 'position:fixed;top:0;left:0;width:100%;background:#fee2e2;color:#991b1b;padding:20px;font-family:monospace;font-size:13px;z-index:999999;border-bottom:3px solid #ef4444;white-space:pre-wrap;box-sizing:border-box;box-shadow:0 10px 25px rgba(0,0,0,0.2);';
+        div.innerText = '⚠️ ERROR DETECTADO EN EL NAVEGADOR:\n' + (event.error ? event.error.stack || event.error : event.message) + '\n\nOrigen: ' + event.filename + ':' + event.lineno;
+        document.body.appendChild(div);
+      });
+      window.addEventListener('unhandledrejection', function(event) {
+        var existing = document.getElementById('heis-runtime-rejection');
+        if (existing) return;
+        var div = document.createElement('div');
+        div.id = 'heis-runtime-rejection';
+        div.style = 'position:fixed;top:0;left:0;width:100%;background:#fee2e2;color:#991b1b;padding:20px;font-family:monospace;font-size:13px;z-index:999999;border-bottom:3px solid #ef4444;white-space:pre-wrap;box-sizing:border-box;box-shadow:0 10px 25px rgba(0,0,0,0.2);';
+        div.innerText = '⚠️ PROMISE NO CONTROLADA:\n' + (event.reason ? event.reason.stack || event.reason : event.reason);
+        document.body.appendChild(div);
+      });
+    </script>
+  </head>
+  <body class="bg-[#f0f3f9] dark:bg-[#110C2B] text-slate-800 dark:text-slate-100 antialiased selection:bg-[#02CBA9]/20 selection:text-[#02CBA9] min-h-screen">
+    <div id="root" class="min-h-screen flex flex-col"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

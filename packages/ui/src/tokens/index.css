@@ -1,0 +1,273 @@
+@import '/fonts/fonts.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --bg-main: #f0f3f9;
+    --card-bg: #ffffff;
+    --border-color: #e2e8f0;
+    --obsidian: #110C2B;
+
+    /* Colores oficiales HEIS SAC */
+    --heis-teal: #02CBA9;
+    --heis-purple: #7D71EB;
+    --heis-cyan: #1CC0F9;
+    --heis-night: #110C2B;
+    --heis-white: #FFFFFF;
+
+    --brand-primary: #02CBA9;
+    --brand-secondary: #7D71EB;
+    --brand-cyan: #1CC0F9;
+    --brand-night: #110C2B;
+    --brand-glow: rgba(2, 203, 169, 0.2);
+  }
+
+  /* Variantes por vertical sobre la identidad HEIS */
+  [data-module="superadmin"] {
+    --brand-primary: #7D71EB;
+    --brand-secondary: #02CBA9;
+    --brand-glow: rgba(125, 113, 235, 0.2);
+  }
+
+  [data-module="restaurante"] {
+    --brand-primary: #02CBA9;
+    --brand-secondary: #7D71EB;
+    --brand-glow: rgba(2, 203, 169, 0.18);
+  }
+
+  [data-module="ferreteria"] {
+    --brand-primary: #7D71EB;
+    --brand-secondary: #1CC0F9;
+    --brand-glow: rgba(125, 113, 235, 0.18);
+  }
+
+  [data-module="botica"] {
+    --brand-primary: #02CBA9;
+    --brand-secondary: #1CC0F9;
+    --brand-glow: rgba(2, 203, 169, 0.18);
+  }
+
+  [data-module="hospedaje"] {
+    --brand-primary: #7D71EB;
+    --brand-secondary: #02CBA9;
+    --brand-glow: rgba(125, 113, 235, 0.18);
+  }
+
+  .dark {
+    --bg-main: #110C2B;
+    --card-bg: #18123B;
+    --card-subtle: #22194E;
+    --border-color: rgba(125, 113, 235, 0.16);
+    --obsidian: #0b071e;
+
+    --brand-primary: #02CBA9;
+    --brand-secondary: #7D71EB;
+    --brand-cyan: #1CC0F9;
+    --brand-night: #110C2B;
+    --brand-glow: rgba(2, 203, 169, 0.25);
+    color-scheme: dark;
+  }
+
+  .dark [data-module="superadmin"] {
+    --brand-primary: #7D71EB;
+    --brand-secondary: #02CBA9;
+    --brand-glow: rgba(125, 113, 235, 0.3);
+  }
+
+  .dark [data-module="restaurante"] {
+    --brand-primary: #02CBA9;
+    --brand-secondary: #7D71EB;
+    --brand-glow: rgba(2, 203, 169, 0.25);
+  }
+
+  .dark [data-module="ferreteria"] {
+    --brand-primary: #7D71EB;
+    --brand-secondary: #1CC0F9;
+    --brand-glow: rgba(125, 113, 235, 0.25);
+  }
+
+  .dark [data-module="botica"] {
+    --brand-primary: #02CBA9;
+    --brand-secondary: #1CC0F9;
+    --brand-glow: rgba(2, 203, 169, 0.25);
+  }
+
+  .dark [data-module="hospedaje"] {
+    --brand-primary: #7D71EB;
+    --brand-secondary: #02CBA9;
+    --brand-glow: rgba(125, 113, 235, 0.25);
+  }
+
+  html {
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    background-color: var(--bg-main);
+    color: #1e293b;
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    overflow-x: hidden;
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+
+  .dark body {
+    color: #f1f5f9;
+    background-color: #110C2B;
+  }
+
+  /* Tipografía Global: Sora para títulos, KPIs y números */
+  h1, h2, h3, h4, h5, h6, .font-heading {
+    font-family: 'Sora', 'Plus Jakarta Sans', sans-serif;
+    letter-spacing: -0.02em;
+  }
+
+  .font-mono,
+  .font-sora,
+  [data-numeric] {
+    font-family: 'Sora', 'Plus Jakarta Sans', sans-serif !important;
+    font-feature-settings: 'tnum' on, 'lnum' on, 'zero' on;
+  }
+
+  table td, table th {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Scrollbars personalizados */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+  }
+
+  .dark ::-webkit-scrollbar-thumb {
+    background: #334155;
+  }
+  .dark ::-webkit-scrollbar-thumb:hover {
+    background: #475569;
+  }
+}
+
+/* Glassmorphism utility classes */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(226, 232, 240, 0.8);
+}
+
+.dark .glass-panel {
+  background: rgba(13, 21, 39, 0.75);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Estilos de Toast Indestructible y Píldora */
+.heis-toast {
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 12px 36px -4px rgba(0, 0, 0, 0.10), 0 4px 12px -2px rgba(0, 0, 0, 0.05);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.dark .heis-toast {
+  box-shadow: 0 16px 48px -4px rgba(0, 0, 0, 0.6), 0 6px 16px -2px rgba(0, 0, 0, 0.4);
+}
+
+.heis-toast:hover {
+  transform: translateY(-2px);
+}
+
+/* Animación fluida de la barra de progreso de Toast */
+@keyframes toastProgress {
+  from {
+    width: 100%;
+  }
+  to {
+    width: 0%;
+  }
+}
+
+.toast-progress-bar {
+  animation-name: toastProgress;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+
+.heis-toast:hover .toast-progress-bar {
+  animation-play-state: paused;
+}
+
+/* Scrollbar interno para menús dropdown flotantes */
+.custom-dropdown-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.4) transparent;
+}
+.custom-dropdown-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+.custom-dropdown-scroll::-webkit-scrollbar-track {
+  background: transparent;
+  margin: 6px 0;
+}
+.custom-dropdown-scroll::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.4);
+  border-radius: 9999px;
+}
+.custom-dropdown-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.7);
+}
+.dark .custom-dropdown-scroll {
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+.dark .custom-dropdown-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+}
+.dark .custom-dropdown-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.4);
+}
+
+/* Scrollbar interno para modales ejecutivos */
+.custom-modal-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.45) transparent;
+}
+.custom-modal-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.custom-modal-scroll::-webkit-scrollbar-track {
+  background: transparent;
+  margin: 6px 0;
+}
+.custom-modal-scroll::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.35);
+  border-radius: 9999px;
+}
+.custom-modal-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.65);
+}
+.dark .custom-modal-scroll {
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+.dark .custom-modal-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+}
+.dark .custom-modal-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.4);
+}
+
+

@@ -1,0 +1,199 @@
+[
+  {
+    "id": 1,
+    "alias": "SED",
+    "nombre": "Ver Detalle Completo",
+    "descripcion": "Visualización extendida de registros, comprobantes y auditoría",
+    "modulo": "General",
+    "icono": "Eye",
+    "roles": [
+      "admin",
+      "supervisor",
+      "cajero",
+      "vendedor",
+      "mozo"
+    ],
+    "activo": true,
+    "riesgo": "bajo",
+    "requiere_pin": false,
+    "auditoria_obligatoria": false
+  },
+  {
+    "id": 2,
+    "alias": "UPD",
+    "nombre": "Editar y Modificar Registro",
+    "descripcion": "Edición de campos y datos de clientes o productos existentes",
+    "modulo": "General",
+    "icono": "Pencil",
+    "roles": [
+      "admin",
+      "supervisor"
+    ],
+    "activo": true,
+    "riesgo": "medio",
+    "requiere_pin": false,
+    "auditoria_obligatoria": true
+  },
+  {
+    "id": 3,
+    "alias": "DEL",
+    "nombre": "Eliminar Fila o Documento",
+    "descripcion": "Baja lógica o supresión de elementos de base de datos",
+    "modulo": "General",
+    "icono": "Trash2",
+    "roles": [
+      "admin"
+    ],
+    "activo": true,
+    "riesgo": "critico",
+    "requiere_pin": true,
+    "auditoria_obligatoria": true
+  },
+  {
+    "id": 4,
+    "alias": "ANUL",
+    "nombre": "Anular Venta / Factura SUNAT",
+    "descripcion": "Generación de comunicación de baja o anulación tributaria",
+    "modulo": "Ventas",
+    "icono": "XCircle",
+    "roles": [
+      "admin",
+      "supervisor"
+    ],
+    "activo": true,
+    "riesgo": "critico",
+    "requiere_pin": true,
+    "auditoria_obligatoria": true
+  },
+  {
+    "id": 5,
+    "alias": "REIMP_A4",
+    "nombre": "Imprimir Factura Formato A4",
+    "descripcion": "Descarga e impresión en formato PDF/A4 corporativo",
+    "modulo": "Ventas",
+    "icono": "Printer",
+    "roles": [
+      "admin",
+      "supervisor",
+      "cajero",
+      "vendedor"
+    ],
+    "activo": true,
+    "riesgo": "medio",
+    "requiere_pin": false,
+    "auditoria_obligatoria": false
+  },
+  {
+    "id": 6,
+    "alias": "REIMP_TICKET",
+    "nombre": "Imprimir Ticket Térmico 80mm",
+    "descripcion": "Envío de copia de ticket a impresora térmica de caja",
+    "modulo": "POS",
+    "icono": "FileText",
+    "roles": [
+      "admin",
+      "supervisor",
+      "cajero",
+      "vendedor",
+      "mozo"
+    ],
+    "activo": true,
+    "riesgo": "bajo",
+    "requiere_pin": false,
+    "auditoria_obligatoria": false
+  },
+  {
+    "id": 7,
+    "alias": "DESC_ESPECIAL",
+    "nombre": "Autorizar Descuento Libre > 10%",
+    "descripcion": "Rebaja de precio por encima del margen comercial asignado",
+    "modulo": "POS",
+    "icono": "DollarSign",
+    "roles": [
+      "admin",
+      "supervisor"
+    ],
+    "activo": true,
+    "riesgo": "critico",
+    "requiere_pin": true,
+    "auditoria_obligatoria": true
+  },
+  {
+    "id": 8,
+    "alias": "REAPERTURA_CAJA",
+    "nombre": "Reabrir Turno de Caja Cerrado",
+    "descripcion": "Reversión de arqueo o corte Z para ajustes extemporáneos",
+    "modulo": "Finanzas",
+    "icono": "Key",
+    "roles": [
+      "admin"
+    ],
+    "activo": true,
+    "riesgo": "critico",
+    "requiere_pin": true,
+    "auditoria_obligatoria": true
+  },
+  {
+    "id": 9,
+    "alias": "CAMBIO_PRECIO",
+    "nombre": "Modificar Precio en Caliente",
+    "descripcion": "Ajuste directo de precio unitario en pantalla de cobro",
+    "modulo": "POS",
+    "icono": "SlidersHorizontal",
+    "roles": [
+      "admin",
+      "supervisor"
+    ],
+    "activo": true,
+    "riesgo": "critico",
+    "requiere_pin": true,
+    "auditoria_obligatoria": true
+  },
+  {
+    "id": 10,
+    "alias": "NOTAS_CREDITO",
+    "nombre": "Emitir Nota de Crédito / Débito",
+    "descripcion": "Emisión de documentos electrónicos correctivos ante SUNAT",
+    "modulo": "Facturación",
+    "icono": "ShieldCheck",
+    "roles": [
+      "admin",
+      "supervisor"
+    ],
+    "activo": true,
+    "riesgo": "critico",
+    "requiere_pin": true,
+    "auditoria_obligatoria": true
+  },
+  {
+    "id": 11,
+    "alias": "ACC",
+    "nombre": "Gestión de Claves & Usuarios",
+    "descripcion": "Creación, suspensión o reseteo de credenciales de personal",
+    "modulo": "Seguridad",
+    "icono": "Lock",
+    "roles": [
+      "admin"
+    ],
+    "activo": true,
+    "riesgo": "critico",
+    "requiere_pin": true,
+    "auditoria_obligatoria": true
+  },
+  {
+    "id": 12,
+    "alias": "EXPORT_EXCEL",
+    "nombre": "Exportar Reportes a Excel",
+    "descripcion": "Extracción masiva de bases de datos de ventas e inventario",
+    "modulo": "Reportes",
+    "icono": "FileSpreadsheet",
+    "roles": [
+      "admin",
+      "supervisor"
+    ],
+    "activo": true,
+    "riesgo": "medio",
+    "requiere_pin": false,
+    "auditoria_obligatoria": true
+  }
+]

@@ -1,0 +1,15 @@
+{
+  "logoUrl": "",
+  "logoWidth": 240,
+  "logoHeight": 68,
+  "tituloLogin": "HEIS Suite Portal Central",
+  "subtituloLogin": "Suite Multi-Empresa & Facturación Electrónica SUNAT",
+  "bgPreset": "minimal_dark",
+  "bgCustomUrl": "",
+  "colorPrimario": "#02CBA9",
+  "colorFondoHead": "#ffffff",
+  "colorFondoBody": "#f8fafc",
+  "mostrarCopyright": true,
+  "textoCopyright": "© 2026 HEIS Suite SAC. Todos los derechos reservados.",
+  "estiloCard": "glass"
+}

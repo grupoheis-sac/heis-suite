@@ -1,0 +1,36 @@
+{
+  "name": "heis-suite",
+  "version": "1.0.0",
+  "private": true,
+  "description": "HEIS Suite - Plataforma SaaS Multi-Módulo y Multi-Tenant de Gestión Empresarial",
+  "workspaces": [
+    "packages/*",
+    "apps/*",
+    "server"
+  ],
+  "scripts": {
+    "dev": "concurrently -n \"SERVER,SHELL\" -c \"cyan,magenta\" \"npm --prefix server run dev\" \"npm --prefix apps/shell run dev\"",
+    "dev:server": "npm --prefix server run dev",
+    "dev:shell": "npm --prefix apps/shell run dev",
+    "build": "npm --prefix apps/shell run build",
+    "seed": "npm --prefix server run seed"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "keywords": [
+    "saas",
+    "multi-tenant",
+    "react",
+    "express",
+    "pos",
+    "erp",
+    "restaurante",
+    "ferreteria",
+    "botica",
+    "hospedaje"
+  ],
+  "author": "HEIS Sistemas",
+  "license": "UNLICENSED"
+}
+
