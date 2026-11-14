@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
+import { playRackStatusSound } from '@heis/core';
 import api from './api';
 import CheckInModal from './CheckInModal';
 import CheckOutModal from './CheckOutModal';
@@ -143,6 +144,15 @@ export default function RackHabitaciones() {
         });
       }
     }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const onRackRealtimeUpdate = () => {
+      playRackStatusSound();
+      cargarRack();
+    };
+    window.addEventListener('heis:rt:rack:updated', onRackRealtimeUpdate);
+    return () => window.removeEventListener('heis:rt:rack:updated', onRackRealtimeUpdate);
   }, []);
 
   // Función para determinar si el checkout de una habitación ocupada está vencido

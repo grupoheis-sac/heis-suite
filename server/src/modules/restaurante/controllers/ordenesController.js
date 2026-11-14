@@ -26,7 +26,6 @@ export const agregarItemsAMesa = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Mesa no encontrada.' });
     }
 
-    // Buscar orden activa en la mesa
     let orden = await Orden.findOne({
       where: {
         table_id,
@@ -55,7 +54,6 @@ export const agregarItemsAMesa = async (req, res, next) => {
       await mesa.update({ status: 'occupied' }, { transaction: t });
     }
 
-    // Insertar items
     for (const item of items) {
       const prod = await Producto.findOne({
         where: { id: item.product_id, empresa_id: req.empresa_id },
@@ -81,7 +79,6 @@ export const agregarItemsAMesa = async (req, res, next) => {
       );
     }
 
-    // Recalcular total de la orden
     const todosDetalles = await OrdenDetalle.findAll({
       where: { order_id: orden.id },
       transaction: t,
@@ -101,6 +98,20 @@ export const agregarItemsAMesa = async (req, res, next) => {
     );
 
     await t.commit();
+
+    // Emitir evento en tiempo real a Cocina KDS y Salón
+    emitTenantEvent(
+      req.empresa_id,
+      'kds:new_order',
+      {
+        order_id: orden.id,
+        mesa: mesa.name,
+        items_count: items.length,
+        mozo: req.user?.nombre || 'Sala',
+      },
+      req.sucursal_id
+    );
+    emitTenantEvent(req.empresa_id, 'kds:updated', { order_id: orden.id }, req.sucursal_id);
 
     await registrarAuditoria({
       modulo: 'restaurante',
@@ -134,7 +145,16 @@ export const enviarACocina = async (req, res, next) => {
       { where: { id: order_id, empresa_id: req.empresa_id, status: 'pending' } }
     );
 
-    emitTenantEvent(req.empresa_id, 'kds:updated', { order_id, status: 'cooking' }, req.sucursal_id);
+    emitTenantEvent(
+      req.empresa_id,
+      'kds:new_order',
+      {
+        order_id,
+        accion: 'ENVIAR_A_COCINA',
+      },
+      req.sucursal_id
+    );
+    emitTenantEvent(req.empresa_id, 'kds:updated', { order_id }, req.sucursal_id);
 
     res.json({ success: true, message: 'Comanda enviada a Cocina y Bar.' });
   } catch (error) {
@@ -151,6 +171,8 @@ export const pedirCuenta = async (req, res, next) => {
     if (!mesa) return res.status(404).json({ success: false, message: 'Mesa no encontrada.' });
 
     await mesa.update({ status: 'billed' });
+    emitTenantEvent(req.empresa_id, 'mesas:updated', { table_id, status: 'billed' }, req.sucursal_id);
+
     res.json({ success: true, message: 'Pre-cuenta solicitada. Mesa en cobro.' });
   } catch (error) {
     next(error);
@@ -200,7 +222,6 @@ export const cobrarOrden = async (req, res, next) => {
       vuelto = parseFloat(Math.max(0, montoRecibido - totalFinal).toFixed(2));
     }
 
-    // Actualizar orden
     await orden.update(
       {
         status: 'completed',
@@ -220,7 +241,6 @@ export const cobrarOrden = async (req, res, next) => {
       { transaction: t }
     );
 
-    // Liberar la mesa
     if (orden.table_id) {
       await Mesa.update(
         { status: 'available' },
@@ -228,7 +248,6 @@ export const cobrarOrden = async (req, res, next) => {
       );
     }
 
-    // Actualizar stock de productos
     for (const det of orden.detalles) {
       const prod = await Producto.findByPk(det.product_id, { transaction: t });
       if (prod && prod.stock !== null && prod.stock > 0) {
@@ -236,7 +255,6 @@ export const cobrarOrden = async (req, res, next) => {
       }
     }
 
-    // Si solicitó Boleta o Factura, emitir automáticamente en el motor UBL 2.1
     if (document_type === 'Boleta' || document_type === 'Factura') {
       try {
         const cpe = await emitirComprobanteUniversal({
@@ -269,12 +287,11 @@ export const cobrarOrden = async (req, res, next) => {
       }
     }
 
-    // Impactar en Caja General activa (core_cajas)
     try {
       const cajaActiva = await CajaGeneral.findOne({
         where: {
           empresa_id: req.empresa_id,
-          estado: ['Abierta', 'abierta'],
+          estado: 'Abierta',
           ...(req.sucursal_id ? { sucursal_id: req.sucursal_id } : {}),
         },
         transaction: t,
@@ -312,7 +329,6 @@ export const cobrarOrden = async (req, res, next) => {
             monto: totalFinal,
             metodo_pago: payment_method,
             origen_modulo: 'restaurante',
-            ref_legacy_id: orden.id,
           },
           { transaction: t }
         );
@@ -323,6 +339,9 @@ export const cobrarOrden = async (req, res, next) => {
 
     await t.commit();
 
+    emitTenantEvent(req.empresa_id, 'kds:updated', { order_id: orden.id, status: 'completed' }, req.sucursal_id);
+    emitTenantEvent(req.empresa_id, 'caja:updated', { origen: 'restaurante', total: totalFinal }, req.sucursal_id);
+
     await registrarAuditoria({
       modulo: 'restaurante',
       accion: 'COBRAR_ORDEN',
@@ -331,15 +350,6 @@ export const cobrarOrden = async (req, res, next) => {
       detalles: { total: totalFinal, metodo: payment_method, comprobante: document_type },
       req,
     });
-
-    emitTenantEvent(req.empresa_id, 'caja:updated', {
-      orden_id: orden.id,
-      total: totalFinal,
-      modulo: 'restaurante',
-    }, req.sucursal_id);
-    if (orden.table_id) {
-      emitTenantEvent(req.empresa_id, 'mesas:updated', { table_id: orden.table_id }, req.sucursal_id);
-    }
 
     res.json({
       success: true,
@@ -431,6 +441,8 @@ export const anularOrden = async (req, res, next) => {
     }
 
     await t.commit();
+    emitTenantEvent(req.empresa_id, 'kds:updated', { order_id: orden.id, status: 'cancelled' }, req.sucursal_id);
+
     res.json({ success: true, message: 'Orden anulada y mesa liberada.' });
   } catch (error) {
     await t.rollback();
@@ -485,4 +497,3 @@ export default {
   anularOrden,
   getHistorialOrdenes,
 };
-

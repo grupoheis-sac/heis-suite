@@ -1,54 +1,94 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { api } from './api';
+import {
+  useRealtime,
+  playKdsNewOrderSound,
+  playKdsDishReadySound,
+} from '@heis/core';
+import toast from 'react-hot-toast';
 import {
   ChefHat,
   Clock,
   CheckCircle2,
-  AlertCircle,
-  Bell,
-  Utensils,
   Wine,
   RefreshCw,
-  Flame
+  Flame,
+  Volume2,
+  VolumeX,
+  Radio
 } from 'lucide-react';
 
 export default function Cocina() {
   const [comandas, setComandas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filtroDestino, setFiltroDestino] = useState('todos'); // 'todos', 'kitchen', 'bar'
+  const [sonidoActivo, setSonidoActivo] = useState(
+    () => localStorage.getItem('heis_sound_muted') !== 'true'
+  );
 
-  const cargarComandas = async () => {
+  const toggleSonido = () => {
+    const nuevo = !sonidoActivo;
+    setSonidoActivo(nuevo);
+    localStorage.setItem('heis_sound_muted', String(!nuevo));
+    if (nuevo) {
+      playKdsDishReadySound();
+      toast.success('Alertas sonoras de Cocina KDS activadas');
+    } else {
+      toast('Alertas sonoras silenciadas');
+    }
+  };
+
+  const cargarComandas = useCallback(async () => {
     try {
       const res = await api.get('/cocina/comandas');
       if (res.success) {
-        setComandas(res.comandas);
+        setComandas(res.comandas || []);
       }
     } catch (err) {
       console.error('Error al cargar comandas:', err);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     cargarComandas();
-    const interval = setInterval(cargarComandas, 8000); // Polling cada 8 segundos
+    const interval = setInterval(cargarComandas, 15000);
     return () => clearInterval(interval);
-  }, []);
+  }, [cargarComandas]);
+
+  // Suscripción en tiempo real a eventos KDS del tenant
+  const { connected: rtConnected } = useRealtime((eventName, payload) => {
+    if (eventName === 'kds:new_order') {
+      playKdsNewOrderSound();
+      toast.success(
+        `🔔 Nueva comanda en cocina${payload?.mesa ? ` (${payload.mesa})` : ''}`
+      );
+      cargarComandas();
+    } else if (eventName === 'kds:updated') {
+      if (payload?.status === 'ready') {
+        playKdsDishReadySound();
+      }
+      cargarComandas();
+    }
+  });
 
   const cambiarEstadoItem = async (itemId, nuevoEstado) => {
     try {
       const res = await api.patch(`/cocina/item/${itemId}/estado`, { status: nuevoEstado });
       if (res.success) {
+        if (nuevoEstado === 'ready') {
+          playKdsDishReadySound();
+        }
         cargarComandas();
       }
     } catch (err) {
-      alert('Error al actualizar plato');
+      toast.error('Error al actualizar el estado del plato');
     }
   };
 
   const calcularMinutos = (fechaStr) => {
-    const ordenTime = new Date(fechaStr);
+    const ordenTime = new Date(fechaStr || Date.now());
     const ahora = new Date();
     const diff = Math.floor((ahora - ordenTime) / (1000 * 60));
     return Math.max(0, diff);
@@ -59,23 +99,50 @@ export default function Cocina() {
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-black text-slate-100 flex items-center gap-3">
-            <span className="p-2 rounded-xl bg-orange-500/20 text-orange-400">
-              <ChefHat className="w-6 h-6" />
+          <div className="flex items-center gap-3 flex-wrap">
+            <h1 className="text-2xl font-black text-slate-900 dark:text-slate-100 flex items-center gap-3">
+              <span className="p-2 rounded-xl bg-orange-500/20 text-orange-500 dark:text-orange-400">
+                <ChefHat className="w-6 h-6" />
+              </span>
+              KDS • Pantalla de Cocina y Bar en Vivo
+            </h1>
+            <span
+              className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${
+                rtConnected
+                  ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/25'
+                  : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/25'
+              }`}
+            >
+              <Radio className={`w-3 h-3 ${rtConnected ? 'animate-pulse' : ''}`} />
+              {rtConnected ? 'En Vivo' : 'Reconectando'}
             </span>
-            KDS • Pantalla de Cocina y Bar en Vivo
-          </h1>
-          <p className="text-sm text-slate-400 mt-1">
-            Recepción en tiempo real de pedidos de sala con notas y tiempos de espera.
+          </div>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+            Recepción instantánea con alerta sonora de pedidos de salón, notas y tiempos de preparación.
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5 flex-wrap">
+          {/* Botón activar/silenciar timbre KDS */}
+          <button
+            type="button"
+            onClick={toggleSonido}
+            className={`px-3 py-2 rounded-xl text-xs font-bold border flex items-center gap-1.5 transition-all cursor-pointer ${
+              sonidoActivo
+                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-300'
+                : 'bg-slate-800 border-slate-700 text-slate-400'
+            }`}
+            title={sonidoActivo ? 'Timbre sonoro activado' : 'Timbre silenciado'}
+          >
+            {sonidoActivo ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+            <span>{sonidoActivo ? 'Sonido ON' : 'Mudo'}</span>
+          </button>
+
           {/* Filter by destination */}
           <div className="flex bg-slate-900 border border-slate-800 p-1 rounded-xl text-xs">
             <button
               onClick={() => setFiltroDestino('todos')}
-              className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
+              className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
                 filtroDestino === 'todos' ? 'bg-amber-600 text-white' : 'text-slate-400 hover:text-white'
               }`}
             >
@@ -83,7 +150,7 @@ export default function Cocina() {
             </button>
             <button
               onClick={() => setFiltroDestino('kitchen')}
-              className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1 ${
+              className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1 cursor-pointer ${
                 filtroDestino === 'kitchen' ? 'bg-rose-600 text-white' : 'text-slate-400 hover:text-white'
               }`}
             >
@@ -91,7 +158,7 @@ export default function Cocina() {
             </button>
             <button
               onClick={() => setFiltroDestino('bar')}
-              className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1 ${
+              className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1 cursor-pointer ${
                 filtroDestino === 'bar' ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:text-white'
               }`}
             >
@@ -101,8 +168,8 @@ export default function Cocina() {
 
           <button
             onClick={cargarComandas}
-            className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors"
-            title="Actualizar"
+            className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors cursor-pointer"
+            title="Actualizar comandas"
           >
             <RefreshCw className="w-4 h-4" />
           </button>
@@ -119,20 +186,20 @@ export default function Cocina() {
           <div className="col-span-full py-24 text-center">
             <div className="flex flex-col items-center justify-center gap-3 text-slate-500">
               <CheckCircle2 className="w-12 h-12 text-emerald-400" />
-              <p className="font-bold text-base text-slate-300">¡Cocina y Bar al Día!</p>
+              <p className="font-bold text-base text-slate-700 dark:text-slate-300">¡Cocina y Bar al Día!</p>
               <p className="text-xs">No hay comandas pendientes de preparación en este momento.</p>
             </div>
           </div>
         ) : (
           comandas.map((orden) => {
-            const minutos = calcularMinutos(orden.created_at);
+            const minutos = calcularMinutos(orden.createdAt || orden.created_at);
             const esRetrasada = minutos >= 20;
             const esAdvertencia = minutos >= 10 && minutos < 20;
 
-            // Filtrar items por destino si corresponde
             const itemsMostrados = (orden.detalles || []).filter((d) => {
               if (filtroDestino === 'todos') return true;
-              return d.producto?.destination === filtroDestino;
+              const area = d.producto?.preparation_area || d.producto?.destination || 'kitchen';
+              return area === filtroDestino;
             });
 
             if (itemsMostrados.length === 0) return null;
@@ -163,7 +230,7 @@ export default function Cocina() {
                       {orden.mesa?.name || `Orden #${orden.id}`}
                     </h3>
                     <p className="text-[11px] text-slate-400">
-                      Mozo: {orden.mozo?.name || 'Sala'}
+                      Mozo: {orden.mozo?.nombre || orden.mozo?.name || 'Sala'}
                     </p>
                   </div>
 
@@ -225,7 +292,7 @@ export default function Cocina() {
                         {item.status === 'pending' && (
                           <button
                             onClick={() => cambiarEstadoItem(item.id, 'cooking')}
-                            className="flex-1 py-1.5 rounded-lg bg-orange-600/30 hover:bg-orange-600 text-orange-200 hover:text-white text-[11px] font-bold transition-all border border-orange-500/40"
+                            className="flex-1 py-1.5 rounded-lg bg-orange-600/30 hover:bg-orange-600 text-orange-200 hover:text-white text-[11px] font-bold transition-all border border-orange-500/40 cursor-pointer"
                           >
                             Empezar a Cocinar
                           </button>
@@ -233,7 +300,7 @@ export default function Cocina() {
                         {item.status === 'cooking' && (
                           <button
                             onClick={() => cambiarEstadoItem(item.id, 'ready')}
-                            className="flex-1 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold transition-all shadow-md shadow-emerald-600/20 flex items-center justify-center gap-1"
+                            className="flex-1 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold transition-all shadow-md shadow-emerald-600/20 flex items-center justify-center gap-1 cursor-pointer"
                           >
                             <CheckCircle2 className="w-3 h-3" />
                             Marcar Listo
@@ -242,7 +309,7 @@ export default function Cocina() {
                         {item.status === 'ready' && (
                           <button
                             onClick={() => cambiarEstadoItem(item.id, 'served')}
-                            className="flex-1 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-bold transition-all"
+                            className="flex-1 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-bold transition-all cursor-pointer"
                           >
                             Servido a Mesa
                           </button>

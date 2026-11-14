@@ -6,6 +6,7 @@ import {
   EmpresaProvider,
   useAuthStore,
   useModulos,
+  useRealtime,
   AdministracionHub,
   api,
 } from '@heis/core';
@@ -136,6 +137,7 @@ function DashboardGuardRoute() {
 }
 
 function MainAppShell() {
+  useRealtime();
   const { user, empresa, sucursalActual, isDark, toggleTheme, logout } = useAuthStore();
   const modulos = useModulos();
   const location = useLocation();
