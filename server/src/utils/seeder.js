@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
+import { sembrarTodasLasCredenciales } from './seed_credenciales.js';
 import { sequelize, Empresa, Usuario, Sucursal, Rol, AuditoriaLog } from '../core/models/index.js';
 import {
   Area,
@@ -230,6 +231,7 @@ export async function runSeeder() {
       },
     });
     console.log('👥 Usuarios base listos (admin@admin.com, caja@admin.com, mozo@admin.com)');
+    await sembrarTodasLasCredenciales();
 
     // 6. Sembrar Áreas y Mesas de Restaurante
     const conteoAreas = await Area.count({ where: { empresa_id: empresa.id } });
