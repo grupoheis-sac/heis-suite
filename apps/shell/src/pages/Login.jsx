@@ -475,7 +475,7 @@ export default function Login() {
                   </p>
                 </div>
                 <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20 self-start sm:self-auto">
-                  {crendencialesFiltradas.length} roles activos
+                  {credencialesFiltradas.length} roles activos
                 </span>
               </div>
 
@@ -506,7 +506,7 @@ export default function Login() {
 
               {/* Grid Scrollable de Credenciales */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[360px] overflow-y-auto pr-1">
-                {crendencialesFiltradas.map((cred, idx) => {
+                {credencialesFiltradas.map((cred, idx) => {
                   const Icon = cred.icon;
                   const isSelected = email === cred.email;
                   return (
