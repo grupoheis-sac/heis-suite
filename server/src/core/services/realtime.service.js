@@ -109,10 +109,10 @@ export function streamRealtimeEvents(req, res) {
       })}\n\n`
     );
 
-    // Heartbeat cada 25s para mantener viva la conexión detrás de Nginx/Cloudflare
+    // Heartbeat / ping cada 25s para mantener viva la conexión detrás de Nginx/Cloudflare
     const heartbeat = setInterval(() => {
       try {
-        res.write(`: heartbeat ${Date.now()}\n\n`);
+        res.write(`: ping ${Date.now()}\n\n`);
       } catch (_) {
         clearInterval(heartbeat);
       }

@@ -5,6 +5,10 @@ import { Empresa, Usuario, Sucursal, Rol } from '../core/models/index.js';
 dotenv.config();
 
 export async function sembrarTodasLasCredenciales() {
+  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_SEED !== 'true') {
+    console.warn('⚠️ Seeder cancelado: La siembra de credenciales en producción está bloqueada por seguridad. Para forzar, configure ALLOW_SEED=true.');
+    return;
+  }
   console.log('🌱 Sembrando credenciales y roles para todos los sistemas...');
 
   // 1. Obtener Empresa Demo (id: 1 o por ruc)

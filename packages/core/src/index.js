@@ -9,6 +9,7 @@ export { useAuthStore } from './auth/authStore';
 export { EmpresaProvider, useModulos, useEmpresa, usePermiso, useSubmodulo } from './auth/EmpresaContext';
 export { useSucursalStore } from './store/sucursalStore';
 export { useSettingsStore } from './store/settingsStore';
+export { createCartStore } from './store/createCartStore';
 export { applyBrandToTab } from './utils/brand';
 export { default as AdministracionHub } from './admin/AdministracionHub';
 export { default as Sucursales } from './admin/Sucursales';

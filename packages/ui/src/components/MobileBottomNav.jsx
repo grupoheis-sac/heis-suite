@@ -14,7 +14,7 @@ import {
   Boxes,
   Sparkles,
 } from 'lucide-react';
-import { getUserVertical, getUserPermissions, isGeneralAdminUser } from '../utils/rbac';
+import { getUserVertical, getUserPermissions, isGeneralAdminUser } from '@heis/core';
 
 export default function MobileBottomNav({ onOpenMenu, user = null, modulosActivos = ['restaurante'] }) {
   const vertical = getUserVertical(user);

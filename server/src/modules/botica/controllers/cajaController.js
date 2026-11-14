@@ -1,6 +1,6 @@
 import { Op } from 'sequelize';
 import { Caja, CajaMovimiento, Venta } from '../models/index.js';
-import { Usuario } from '../../../core/models/index.js';
+import { Usuario, CajaGeneral, CajaMovimientoGeneral } from '../../../core/models/index.js';
 
 export const getCajaActual = async (req, res) => {
   try {
@@ -53,6 +53,19 @@ export const aperturarCaja = async (req, res) => {
       observaciones
     });
 
+    // Delegación / Sincronización en CajaGeneral Core
+    await CajaGeneral.create({
+      empresa_id: empresaId,
+      sucursal_id: req.sucursal_id || null,
+      id_usuario: userId,
+      origen_modulo: 'botica',
+      ref_legacy_id: nueva.id,
+      monto_inicial: parseFloat(monto_inicial) || 0,
+      estado: 'Abierta',
+      fecha_apertura: nueva.fecha_apertura,
+      observaciones,
+    }).catch(() => {});
+
     res.status(201).json({ success: true, data: nueva, message: 'Caja aperturada con éxito' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -82,6 +95,21 @@ export const cerrarCaja = async (req, res) => {
       estado: 'Cerrada',
       observaciones: observaciones || caja.observaciones
     });
+
+    // Delegación / Sincronización en CajaGeneral Core
+    await CajaGeneral.update(
+      {
+        estado: 'Cerrada',
+        fecha_cierre: new Date(),
+        monto_final: real,
+        saldo_esperado: esperado,
+        diferencia,
+        observaciones: observaciones || caja.observaciones,
+      },
+      {
+        where: { origen_modulo: 'botica', ref_legacy_id: caja.id },
+      }
+    ).catch(() => {});
 
     res.json({ success: true, data: caja, message: 'Caja cerrada y arqueada correctamente' });
   } catch (error) {

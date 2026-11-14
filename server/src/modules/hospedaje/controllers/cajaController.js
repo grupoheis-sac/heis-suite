@@ -1,5 +1,5 @@
 import { TurnoCaja, MovimientoCaja, Pago } from '../models/index.js';
-import { Usuario } from '../../../core/models/index.js';
+import { Usuario, CajaGeneral, CajaMovimientoGeneral } from '../../../core/models/index.js';
 
 export const getCajaActual = async (req, res) => {
   try {
@@ -44,6 +44,19 @@ export const abrirCaja = async (req, res) => {
       observaciones
     });
 
+    // Delegación / Sincronización en CajaGeneral Core
+    await CajaGeneral.create({
+      empresa_id: empresaId,
+      sucursal_id: req.sucursal_id || 1,
+      id_usuario: req.user?.id || 1,
+      origen_modulo: 'hospedaje',
+      ref_legacy_id: nuevo.id,
+      monto_inicial: parseFloat(monto_apertura) || 0,
+      estado: 'Abierta',
+      fecha_apertura: nuevo.fecha_apertura || new Date(),
+      observaciones,
+    }).catch(() => {});
+
     res.status(201).json({ success: true, data: nuevo, message: 'Turno de caja aperturado' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -84,6 +97,21 @@ export const cerrarCaja = async (req, res) => {
       estado: 'cerrado',
       observaciones: observaciones || turno.observaciones
     });
+
+    // Delegación / Sincronización en CajaGeneral Core
+    await CajaGeneral.update(
+      {
+        estado: 'Cerrada',
+        fecha_cierre: new Date(),
+        monto_final: real,
+        saldo_esperado: esperado,
+        diferencia,
+        observaciones: observaciones || turno.observaciones,
+      },
+      {
+        where: { origen_modulo: 'hospedaje', ref_legacy_id: turno.id },
+      }
+    ).catch(() => {});
 
     res.json({ success: true, data: turno, message: 'Turno de caja cerrado con éxito' });
   } catch (error) {

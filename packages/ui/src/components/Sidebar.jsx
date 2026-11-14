@@ -42,7 +42,7 @@ import {
   getUserAllowedModules,
   canUserAccessModule,
   getUserPermissions,
-} from '../utils/rbac';
+} from '@heis/core';
 
 export default function Sidebar({
   mobileOpen = false,

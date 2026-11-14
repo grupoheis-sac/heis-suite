@@ -46,7 +46,7 @@ import {
  Table as TableIcon
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { useAuthStore } from '../store/authStore';
+import { useAuthStore } from '../auth/authStore';
 import { useSucursalStore } from '../store/sucursalStore';
 
 // Opciones de tipo de documento para colaboradores

@@ -19,5 +19,38 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    chunkSizeWarningLimit: 1500,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (
+              id.includes('react') ||
+              id.includes('react-dom') ||
+              id.includes('react-router-dom') ||
+              id.includes('zustand')
+            ) {
+              return 'vendor';
+            }
+            if (id.includes('lucide-react')) {
+              return 'vendor-icons';
+            }
+          }
+          if (id.includes('/pages/botica/')) {
+            return 'mod-botica';
+          }
+          if (id.includes('/pages/ferreteria/')) {
+            return 'mod-ferreteria';
+          }
+          if (id.includes('/pages/hospedaje/')) {
+            return 'mod-hospedaje';
+          }
+          if (id.includes('/pages/restaurante/') || id.includes('/packages/restaurante/')) {
+            return 'mod-restaurante';
+          }
+        },
+      },
+    },
+  },
 });
-

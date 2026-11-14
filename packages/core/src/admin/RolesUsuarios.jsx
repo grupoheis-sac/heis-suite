@@ -48,7 +48,7 @@ import {
  Settings as SettingsIcon
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { useAuthStore } from '../store/authStore';
+import { useAuthStore } from '../auth/authStore';
 
 // Opciones de roles con descripciones operativas por vertical de negocio
 const OPCIONES_ROLES = [

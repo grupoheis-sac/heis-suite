@@ -171,9 +171,9 @@ export const crearVenta = async (req, res, next) => {
       const subtotalItem = parseFloat((cant * precio).toFixed(2));
       subtotalCalculado += subtotalItem;
 
-      // Descontar stock
+      // Descontar stock de forma atómica
       const nuevoStock = parseFloat((stockActual - cant).toFixed(3));
-      await prod.update({ stock: nuevoStock }, { transaction: t });
+      await prod.decrement('stock', { by: cant, transaction: t });
 
       // Registrar movimiento Kardex
       await InventarioMovimiento.create(

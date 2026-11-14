@@ -12,7 +12,7 @@
  * @param {any} value
  * @returns {string}
  */
-function escHtml(value) {
+export function escapeHtml(value) {
   if (value === null || value === undefined) return '';
   return String(value)
     .replace(/&/g, '&amp;')
@@ -21,12 +21,13 @@ function escHtml(value) {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 }
+export { escapeHtml as escHtml };
 
 export function generarHtmlTicketCierreCaja(cajaInfo, formato = '80mm', settings = {}) {
-  const nombreHotel = settings.businessName || 'GRAND HOTEL & SUITES';
-  const rucHotel = settings.businessRuc || '20491823711';
-  const direccionHotel = settings.address || 'Av. Larco 1050, Miraflores, Lima - Perú';
-  const telefonoHotel = settings.phone || '(01) 489-3210 / 998-765-432';
+  const nombreHotel = escapeHtml(settings.businessName || 'GRAND HOTEL & SUITES');
+  const rucHotel = escapeHtml(settings.businessRuc || '20491823711');
+  const direccionHotel = escapeHtml(settings.address || 'Av. Larco 1050, Miraflores, Lima - Perú');
+  const telefonoHotel = escapeHtml(settings.phone || '(01) 489-3210 / 998-765-432');
 
   const es58mm = formato === '58mm';
 

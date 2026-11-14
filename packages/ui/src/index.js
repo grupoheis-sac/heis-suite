@@ -9,6 +9,9 @@ export { default as MobileBottomNav } from './components/MobileBottomNav';
 export { default as UnifiedToastItem } from './components/UnifiedToast';
 export { default as TicketImpresion } from './components/TicketImpresion';
 export { default as SubscriptionStatusBanner } from './components/SubscriptionStatusBanner';
+export { default as DropdownPill } from './components/DropdownPill';
+export { default as POSTouchNumpad } from './components/POSTouchNumpad';
+export { default as POSModalAtajos } from './components/POSModalAtajos';
 export { useSlidingPill } from './hooks/useSlidingPill';
 export {
   isSuperAdminUser,
@@ -18,4 +21,4 @@ export {
   canUserAccessModule,
   getUserPermissions,
   getRoleLandingRoute,
-} from './utils/rbac';
+} from '@heis/core';

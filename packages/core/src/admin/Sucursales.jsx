@@ -31,7 +31,7 @@ import {
 import toast from 'react-hot-toast';
 import api from '../services/api';
 import { useSucursalStore } from '../store/sucursalStore';
-import { useAuthStore } from '../store/authStore';
+import { useAuthStore } from '../auth/authStore';
 
 const OPCIONES_TIPO_ESTABLECIMIENTO = [
   {

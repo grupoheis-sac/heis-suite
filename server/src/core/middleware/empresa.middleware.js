@@ -1,4 +1,4 @@
-import { Empresa } from '../models/index.js';
+import { Empresa, Sucursal } from '../models/index.js';
 import {
   tenantStorage,
   getCachedEmpresa,
@@ -15,7 +15,7 @@ export async function tenantContext(req, res, next) {
 
     let empresaId = req.user.empresa_id;
     const headerSucursalId = req.headers['x-sucursal-id'];
-    const sucursalId = headerSucursalId ? Number(headerSucursalId) : (req.user.sucursal_id || null);
+    let sucursalId = headerSucursalId ? Number(headerSucursalId) : (req.user.sucursal_id || null);
 
     // Si es SuperAdmin, puede inspeccionar cualquier empresa enviando 'X-Empresa-ID'
     if (req.user.rol === 'superadmin') {
@@ -38,6 +38,11 @@ export async function tenantContext(req, res, next) {
         req.empresa_id = null;
         req.sucursal_id = sucursalId;
         req.empresa = null;
+        req.tenant = {
+          empresaId: null,
+          sucursalId,
+          isSuperAdmin: true,
+        };
         return tenantStorage.run({ empresaId: null, sucursalId, isSuperAdmin: true }, () => next());
       }
       return res.status(403).json({ success: false, error: 'Usuario sin empresa asignada' });
@@ -57,6 +62,28 @@ export async function tenantContext(req, res, next) {
         success: false,
         error: 'Empresa no encontrada en la plataforma HEIS.',
       });
+    }
+
+    // Aislamiento estricto de Tenant: Prevenir spoofing / tenant-hopping desde cliente
+    if (req.user.rol !== 'superadmin') {
+      if (req.body && typeof req.body === 'object') {
+        req.body.empresa_id = empresa.id;
+      }
+      if (req.query && typeof req.query === 'object') {
+        req.query.empresa_id = String(empresa.id);
+      }
+
+      // Validar que la sucursal solicitada pertenezca a la empresa del tenant
+      if (sucursalId) {
+        const sucursalValida = await Sucursal.findOne({
+          where: { id: sucursalId, empresa_id: empresa.id },
+          skipTenant: true,
+        });
+        if (!sucursalValida) {
+          // Revertir a la sucursal asignada en el perfil del usuario o null
+          sucursalId = req.user.sucursal_id || null;
+        }
+      }
     }
 
     const estadoVigencia = evaluarVigenciaEmpresa(empresa);
@@ -90,6 +117,11 @@ export async function tenantContext(req, res, next) {
     req.empresa_id = empresa.id;
     req.sucursal_id = sucursalId;
     req.empresa = empresa;
+    req.tenant = {
+      empresaId: empresa.id,
+      sucursalId,
+      isSuperAdmin: req.user.rol === 'superadmin',
+    };
 
     return tenantStorage.run(
       {

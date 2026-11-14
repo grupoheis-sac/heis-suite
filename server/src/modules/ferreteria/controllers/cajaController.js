@@ -1,5 +1,5 @@
 import { Caja, CajaMovimiento, Venta } from '../models/index.js';
-import { Usuario } from '../../../core/models/index.js';
+import { Usuario, CajaGeneral, CajaMovimientoGeneral } from '../../../core/models/index.js';
 import { registrarAuditoria } from '../../../core/middleware/auditoria.middleware.js';
 
 export const getCajaActual = async (req, res, next) => {
@@ -115,6 +115,19 @@ export const aperturarCaja = async (req, res, next) => {
       fecha_apertura: new Date(),
     });
 
+    // Delegación / Sincronización en CajaGeneral Core
+    await CajaGeneral.create({
+      empresa_id: req.empresa_id,
+      sucursal_id: req.sucursal_id || null,
+      id_usuario: userId,
+      origen_modulo: 'ferreteria',
+      ref_legacy_id: nueva.id,
+      monto_inicial: parseFloat(monto_inicial) || 0,
+      estado: 'Abierta',
+      fecha_apertura: nueva.fecha_apertura,
+      observaciones,
+    }).catch(() => {});
+
     await registrarAuditoria({
       modulo: 'ferreteria',
       accion: 'APERTURA_CAJA',
@@ -160,6 +173,19 @@ export const cerrarCaja = async (req, res, next) => {
       fecha_cierre: new Date(),
       observaciones: observaciones || caja.observaciones,
     });
+
+    // Delegación / Sincronización en CajaGeneral Core
+    await CajaGeneral.update(
+      {
+        estado: 'Cerrada',
+        fecha_cierre: new Date(),
+        monto_final: parseFloat(monto_final) || 0,
+        observaciones: observaciones || caja.observaciones,
+      },
+      {
+        where: { origen_modulo: 'ferreteria', ref_legacy_id: caja.id },
+      }
+    ).catch(() => {});
 
     await registrarAuditoria({
       modulo: 'ferreteria',

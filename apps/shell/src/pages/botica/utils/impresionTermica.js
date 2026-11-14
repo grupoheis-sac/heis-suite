@@ -10,14 +10,27 @@
  * adopte el tamaño de página exacto (@page { size: ... }) sin interferencia del DOM de React.
  */
 
+/**
+ * Escapa caracteres HTML peligrosos para prevenir vulnerabilidades XSS en tickets de impresión.
+ */
+export function escapeHtml(value) {
+  if (value === null || value === undefined) return '';
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 export function generarHtmlTicket(venta, formato = '80mm', settings = {}) {
-  const nombreBotica = settings.businessName || 'BOTICA HEIS & SALUD';
-  const rucBotica = settings.businessRuc || '20608945123';
-  const direccionBotica = settings.address || 'Av. Las Palmas 450, San Isidro - Lima';
-  const telefonoBotica = settings.phone || '(01) 489-3210 / 998-765-432';
-  const qfResponsable = venta?.usuario?.colegiatura_qf
+  const nombreBotica = escapeHtml(settings.businessName || 'BOTICA HEIS & SALUD');
+  const rucBotica = escapeHtml(settings.businessRuc || '20608945123');
+  const direccionBotica = escapeHtml(settings.address || 'Av. Las Palmas 450, San Isidro - Lima');
+  const telefonoBotica = escapeHtml(settings.phone || '(01) 489-3210 / 998-765-432');
+  const qfResponsable = escapeHtml(venta?.usuario?.colegiatura_qf
     ? `${venta?.usuario?.nombre || 'Director Técnico'} (${venta.usuario.colegiatura_qf})`
-    : (settings.technicalDirector || 'Q.F. Responsable Reg. CQFP');
+    : (settings.technicalDirector || 'Q.F. Responsable Reg. CQFP'));
 
   const fechaFormateada = new Date(venta?.created_at || venta?.createdAt || Date.now()).toLocaleString('es-PE', {
     day: '2-digit',
@@ -615,13 +628,13 @@ export function imprimirTicketTermico(venta, { formato = '80mm', settings = {}, 
  * adaptado a impresoras térmicas de 80mm y 58mm.
  */
 export function generarHtmlTicketCierreCaja(cajaInfo, formato = '80mm', settings = {}) {
-  const nombreBotica = settings.businessName || 'BOTICA HEIS & SALUD';
-  const rucBotica = settings.businessRuc || '20608945123';
-  const direccionBotica = settings.address || 'Av. Las Palmas 450, San Isidro - Lima';
-  const telefonoBotica = settings.phone || '(01) 489-3210 / 998-765-432';
-  const qfResponsable = cajaInfo?.usuario?.colegiatura_qf
+  const nombreBotica = escapeHtml(settings.businessName || 'BOTICA HEIS & SALUD');
+  const rucBotica = escapeHtml(settings.businessRuc || '20608945123');
+  const direccionBotica = escapeHtml(settings.address || 'Av. Las Palmas 450, San Isidro - Lima');
+  const telefonoBotica = escapeHtml(settings.phone || '(01) 489-3210 / 998-765-432');
+  const qfResponsable = escapeHtml(cajaInfo?.usuario?.colegiatura_qf
     ? `${cajaInfo?.usuario?.nombre || 'Director Técnico'} (${cajaInfo.usuario.colegiatura_qf})`
-    : (settings.technicalDirector || 'Q.F. Responsable Reg. CQFP');
+    : (settings.technicalDirector || 'Q.F. Responsable Reg. CQFP'));
 
   const fechaAperturaFmt = cajaInfo?.fecha_apertura
     ? new Date(cajaInfo.fecha_apertura).toLocaleString('es-PE', {

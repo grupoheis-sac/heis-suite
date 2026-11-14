@@ -69,14 +69,19 @@ async function asegurarBaseDatosExiste() {
 }
 
 export async function runSeeder() {
+  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_SEED !== 'true') {
+    console.warn('⚠️ Seeder cancelado: La ejecución de seeders en producción está bloqueada por seguridad. Para forzar, configure ALLOW_SEED=true.');
+    return;
+  }
   console.log('🚀 Iniciando sembrado y sincronización de HEIS Suite Multi-Tenant...');
 
   try {
     // 0. Asegurar existencia de la BD
     await asegurarBaseDatosExiste();
 
-    // Sincronizar todas las tablas (Core + Restaurante + Ferretería)
-    await sequelize.sync({ alter: true });
+    // Sincronizar todas las tablas de forma segura
+    const shouldAlter = process.env.DB_SYNC_ALTER === 'true' && process.env.NODE_ENV !== 'production';
+    await sequelize.sync({ alter: shouldAlter });
     console.log('✅ Tablas sincronizadas con éxito (Core + Restaurante + Ferretería).');
 
     // 1. Crear o actualizar SuperAdmin Plataforma

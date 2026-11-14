@@ -197,20 +197,26 @@ export const crearVenta = async (req, res) => {
         subtotal: item.subtotal || (cant * item.precio_unitario)
       }, { transaction: t });
 
-      // Descontar medicamento
-      const med = await Medicamento.findByPk(medId, { transaction: t });
+      // Descontar medicamento con bloqueo atómico para prevenir concurrencia y sobreventa
+      const med = await Medicamento.findByPk(medId, { transaction: t, lock: t.LOCK.UPDATE });
       if (med) {
         if (formato === 'Caja') {
-          const nuevoStock = Math.max(0, parseFloat(med.stock_cajas) - cant);
-          await med.update({ stock_cajas: nuevoStock }, { transaction: t });
+          const stockActual = parseFloat(med.stock_cajas) || 0;
+          if (stockActual < cant) {
+            await t.rollback();
+            return res.status(400).json({
+              success: false,
+              message: `Stock insuficiente para "${med.nombre_comercial}". Disponible: ${stockActual} cajas.`
+            });
+          }
+          await med.decrement('stock_cajas', { by: cant, transaction: t });
+          const nuevoStock = Math.max(0, stockActual - cant);
 
-          // Descontar lote si existe
+          // Descontar lote si existe con bloqueo
           if (idLote) {
-            const loteRow = await Lote.findByPk(idLote, { transaction: t });
+            const loteRow = await Lote.findByPk(idLote, { transaction: t, lock: t.LOCK.UPDATE });
             if (loteRow) {
-              await loteRow.update({
-                stock_cajas: Math.max(0, parseFloat(loteRow.stock_cajas) - cant)
-              }, { transaction: t });
+              await loteRow.decrement('stock_cajas', { by: cant, transaction: t });
             }
           }
 
@@ -228,8 +234,15 @@ export const crearVenta = async (req, res) => {
           }, { transaction: t });
         } else {
           // Fracción (pastillas)
-          const nuevoStockFrac = Math.max(0, (med.stock_fraccion || 0) - cant);
-          await med.update({ stock_fraccion: nuevoStockFrac }, { transaction: t });
+          const stockFracActual = parseFloat(med.stock_fraccion) || 0;
+          if (stockFracActual < cant) {
+            await t.rollback();
+            return res.status(400).json({
+              success: false,
+              message: `Stock fraccionado insuficiente para "${med.nombre_comercial}". Disponible: ${stockFracActual} unidades.`
+            });
+          }
+          await med.decrement('stock_fraccion', { by: cant, transaction: t });
         }
       }
     }

@@ -3,11 +3,24 @@
  * Permite imprimir comprobantes y arqueos de caja en 80mm y 58mm
  */
 
+/**
+ * Escapa caracteres HTML peligrosos para prevenir vulnerabilidades XSS en tickets de impresión.
+ */
+export function escapeHtml(value) {
+  if (value === null || value === undefined) return '';
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 export function generarHtmlTicketCierreCaja(cajaInfo, formato = '80mm', settings = {}) {
-  const nombreFerreteria = settings.businessName || 'FERRETERÍA & MATERIALES PRO';
-  const rucFerreteria = settings.businessRuc || '20609123456';
-  const direccionFerreteria = settings.address || 'Av. Industrial 840, Ate Vitarte, Lima - Perú';
-  const telefonoFerreteria = settings.phone || '(01) 489-3210 / 998-765-432';
+  const nombreFerreteria = escapeHtml(settings.businessName || 'FERRETERÍA & MATERIALES PRO');
+  const rucFerreteria = escapeHtml(settings.businessRuc || '20609123456');
+  const direccionFerreteria = escapeHtml(settings.address || 'Av. Industrial 840, Ate Vitarte, Lima - Perú');
+  const telefonoFerreteria = escapeHtml(settings.phone || '(01) 489-3210 / 998-765-432');
 
   const es58mm = formato === '58mm';
   const anchoMm = es58mm ? '58mm' : '80mm';
@@ -363,10 +376,10 @@ export function imprimirTicketCierreCaja(cajaInfo, { formato = '80mm', settings 
  * Soporta rollos térmicos de 80mm y 58mm.
  */
 export function generarHtmlTicket(venta, formato = '80mm', settings = {}) {
-  const nombreFerreteria = settings.businessName || 'FERRETERÍA & MATERIALES HEIS';
-  const rucFerreteria = settings.businessRuc || '20609123456';
-  const direccionFerreteria = settings.address || 'Av. Industrial 840, Ate Vitarte, Lima - Perú';
-  const telefonoFerreteria = settings.phone || '(01) 489-3210 / 998-765-432';
+  const nombreFerreteria = escapeHtml(settings.businessName || 'FERRETERÍA & MATERIALES HEIS');
+  const rucFerreteria = escapeHtml(settings.businessRuc || '20609123456');
+  const direccionFerreteria = escapeHtml(settings.address || 'Av. Industrial 840, Ate Vitarte, Lima - Perú');
+  const telefonoFerreteria = escapeHtml(settings.phone || '(01) 489-3210 / 998-765-432');
 
   const fechaFormateada = new Date(venta?.created_at || venta?.createdAt || Date.now()).toLocaleString('es-PE', {
     day: '2-digit',
