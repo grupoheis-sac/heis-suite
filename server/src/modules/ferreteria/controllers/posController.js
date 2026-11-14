@@ -9,6 +9,7 @@ import {
   InventarioMovimiento,
 } from '../models/index.js';
 import { Usuario, CajaGeneral, CajaMovimientoGeneral } from '../../../core/models/index.js';
+import { emitirComprobanteUniversal } from '../../../core/services/sunatUbl.service.js';
 import { registrarAuditoria } from '../../../core/middleware/auditoria.middleware.js';
 
 export const getVentas = async (req, res, next) => {
@@ -257,6 +258,43 @@ export const crearVenta = async (req, res, next) => {
       );
     }
 
+    // Emitir comprobante electrónico UBL 2.1 en el Core si es Boleta o Factura
+    if (tipo_comprobante === 'Boleta' || tipo_comprobante === 'Factura') {
+      try {
+        const cpe = await emitirComprobanteUniversal({
+          empresaId: req.empresa_id,
+          sucursalId: req.sucursal_id || null,
+          usuarioId: req.user ? req.user.id : 1,
+          origenModulo: 'ferreteria',
+          origenId: nuevaVenta.id,
+          tipoComprobante: tipo_comprobante,
+          seriePreferida: serie,
+          clienteDocumento: clienteRow ? clienteRow.numero_documento : '00000000',
+          clienteNombre: clienteRow ? clienteRow.razon_social : 'CLIENTE VARIOS',
+          clienteDireccion: clienteRow ? clienteRow.direccion : '',
+          descuentoGlobal: desc,
+          items: itemsProcesados.map((it) => ({
+            id_producto: it.id_producto,
+            descripcion: it.descripcion || 'ARTÍCULO FERRETERÍA',
+            cantidad: it.cantidad,
+            precio_unitario: it.precio_unitario,
+          })),
+          transaction: t,
+        });
+
+        await nuevaVenta.update(
+          {
+            sunat_hash: cpe.sunat_hash,
+            sunat_qr: cpe.sunat_qr,
+            sunat_estado: cpe.sunat_estado,
+          },
+          { transaction: t }
+        );
+      } catch (sunatErr) {
+        console.warn('⚠️ No se pudo generar CPE UBL 2.1 en venta ferretería:', sunatErr.message);
+      }
+    }
+
     // Si hubo pago en efectivo y hay caja abierta legacy, registrar venta en caja legacy
     if (id_caja && (tipo_pago === 'Efectivo' || tipo_pago === 'Mixto')) {
       const efectivoSumar = tipo_pago === 'Efectivo' ? totalVenta : parseFloat(monto_efectivo) || 0;
@@ -268,7 +306,7 @@ export const crearVenta = async (req, res, next) => {
       const cajaGeneralActiva = await CajaGeneral.findOne({
         where: {
           empresa_id: req.empresa_id,
-          estado: 'abierta',
+          estado: ['Abierta', 'abierta'],
           ...(req.sucursal_id ? { sucursal_id: req.sucursal_id } : {}),
         },
         transaction: t,
@@ -293,7 +331,7 @@ export const crearVenta = async (req, res, next) => {
             sucursal_id: req.sucursal_id || null,
             id_caja: cajaGeneralActiva.id,
             id_usuario: req.user ? req.user.id : 1,
-            tipo: 'ingreso',
+            tipo: 'Ingreso',
             concepto: `Venta POS #${serie}-${numeroStr}`,
             monto: totalVenta,
             metodo_pago: tipo_pago,

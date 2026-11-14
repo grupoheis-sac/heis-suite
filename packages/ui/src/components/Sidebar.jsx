@@ -723,6 +723,17 @@ export default function Sidebar({
           </NavLink>
         </div>
 
+        <div data-expanded-nav="core-facturacion-sunat" className="relative">
+          <NavLink
+            to="/facturacion-sunat"
+            onClick={onItemClick}
+            className={getMainItemClass(location.pathname.startsWith('/facturacion-sunat'))}
+          >
+            {renderIconBadge(Receipt, 'text-emerald-500 dark:text-emerald-400', 'text-slate-400 dark:text-slate-500', location.pathname.startsWith('/facturacion-sunat'))}
+            <span className="flex-1 font-semibold">Facturación SUNAT UBL</span>
+          </NavLink>
+        </div>
+
         {esAdmin && (
           <div data-expanded-nav="administracion" className="relative">
             <NavLink

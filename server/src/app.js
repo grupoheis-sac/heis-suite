@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url';
 import authRoutes from './core/routes/auth.routes.js';
 import adminRoutes from './core/routes/admin.routes.js';
 import cajaRoutes from './core/routes/caja.routes.js';
+import facturacionRoutes from './core/routes/facturacion.routes.js';
 import superadminRoutes from './core/routes/superadmin.routes.js';
 import consultaRoutes from './core/routes/consulta.routes.js';
 import { obtenerComunicadoActivo, obtenerWhitelabelPublico } from './core/controllers/superadmin.controller.js';
@@ -41,6 +42,8 @@ export async function createApp() {
   app.use('/api/admin', adminRoutes);
   app.use('/api/core/caja', cajaRoutes);
   app.use('/api/caja', cajaRoutes);
+  app.use('/api/core/facturacion', facturacionRoutes);
+  app.use('/api/facturacion', facturacionRoutes);
   app.use('/api/superadmin', superadminRoutes);
   app.use('/api/consulta', consultaRoutes);
   app.get('/api/comunicados/activo', obtenerComunicadoActivo);

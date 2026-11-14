@@ -1,7 +1,7 @@
 import dotenv from 'dotenv';
 import { createApp } from './app.js';
 import { testConnection } from './config/db.js';
-import { CajaGeneral, CajaMovimientoGeneral } from './core/models/index.js';
+import { CajaGeneral, CajaMovimientoGeneral, ComprobanteElectronico } from './core/models/index.js';
 
 dotenv.config();
 
@@ -17,9 +17,10 @@ async function bootstrap() {
     try {
       await CajaGeneral.sync({ alter: false });
       await CajaMovimientoGeneral.sync({ alter: false });
-      console.log('✅ Tablas transversales core_cajas y core_caja_movimientos verificadas.');
+      await ComprobanteElectronico.sync({ alter: false });
+      console.log('✅ Tablas transversales Core (Cajas y Facturación UBL 2.1) verificadas.');
     } catch (syncErr) {
-      console.warn('⚠️ Nota sobre verificación de tablas core_cajas:', syncErr.message);
+      console.warn('⚠️ Nota sobre verificación de tablas Core:', syncErr.message);
     }
   }
 

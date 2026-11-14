@@ -15,6 +15,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import SuperAdminHub from './pages/SuperAdminHub';
 import ConfiguracionView from './pages/ConfiguracionView';
+const FacturacionSunatHub = lazy(() => import('./pages/FacturacionSunatHub'));
 
 // Módulo Restaurante (Lazy loaded)
 const Mesas = lazy(() => import('./pages/restaurante/Mesas'));
@@ -169,6 +170,12 @@ function MainAppShell() {
   if (isSuperAdmin && !empresa) {
     moduloActual = 'superadmin';
   } else if (
+    path.startsWith('/caja') ||
+    path.startsWith('/facturacion-sunat') ||
+    path.startsWith('/administracion')
+  ) {
+    moduloActual = 'core';
+  } else if (
     path.includes('-botica') ||
     path.startsWith('/dispensacion') ||
     path.startsWith('/medicamentos') ||
@@ -191,7 +198,6 @@ function MainAppShell() {
     path.startsWith('/productos-ferreteria') ||
     path.startsWith('/kardex') ||
     path.startsWith('/ventas') ||
-    path.startsWith('/caja') ||
     path.startsWith('/clientes') ||
     path.startsWith('/cotizaciones') ||
     path.startsWith('/compras') ||
@@ -289,10 +295,11 @@ export default function App() {
             <Route path="/proveedores" element={<RequireModuloRoute modulo="ferreteria" submodulo="compras_proveedores"><ComprasProveedoresHub /></RequireModuloRoute>} />
             <Route path="/clientes" element={<RequireModuloRoute modulo="ferreteria" submodulo="clientes_obras"><Clientes /></RequireModuloRoute>} />
 
-            {/* Core Transversal: Caja e Historial (Accesibles para todos los giros activos) */}
+            {/* Core Transversal: Caja, Facturación e Historial (Accesibles para todos los giros activos) */}
             <Route path="/caja" element={<RequireModuloRoute modulo="core"><CajaFinanzasHub /></RequireModuloRoute>} />
             <Route path="/cajas" element={<Navigate to="/caja" replace />} />
             <Route path="/historial-cajas" element={<Navigate to="/caja?tab=turnos" replace />} />
+            <Route path="/facturacion-sunat" element={<RequireModuloRoute modulo="core"><FacturacionSunatHub /></RequireModuloRoute>} />
 
             {/* Módulo Botica / Farmacéutica */}
             <Route path="/dispensacion" element={<RequireModuloRoute modulo="botica" submodulo="dispensacion"><POSBotica /></RequireModuloRoute>} />

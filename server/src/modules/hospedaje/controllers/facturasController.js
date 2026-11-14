@@ -1,5 +1,6 @@
 import { Factura, Reserva, Huesped, Pago, CargoAdicional } from '../models/index.js';
 import { CajaGeneral, CajaMovimientoGeneral } from '../../../core/models/index.js';
+import { emitirComprobanteUniversal } from '../../../core/services/sunatUbl.service.js';
 
 export const getFacturas = async (req, res) => {
   try {
@@ -46,6 +47,33 @@ export const crearFactura = async (req, res) => {
       fecha_emision: new Date()
     });
 
+    // Registrar comprobante electrónico UBL 2.1 en el Core
+    if (tipo_comprobante === 'Factura' || tipo_comprobante === 'Boleta') {
+      try {
+        const huespedObj = huesped_id ? await Huesped.findByPk(huesped_id) : null;
+        await emitirComprobanteUniversal({
+          empresaId,
+          sucursalId: req.sucursal_id || null,
+          usuarioId: req.user?.id || 1,
+          origenModulo: 'hospedaje',
+          origenId: factura.id,
+          tipoComprobante: tipo_comprobante,
+          seriePreferida: serie,
+          clienteDocumento: huespedObj ? huespedObj.numero_documento : '00000000',
+          clienteNombre: huespedObj ? `${huespedObj.nombres || ''} ${huespedObj.apellidos || ''}`.trim() : 'HUESPED VARIOS',
+          items: [
+            {
+              descripcion: `ALOJAMIENTO HOTELERO (RESERVA #${reserva_id || 'GENERAL'})`,
+              cantidad: 1,
+              precio_unitario: parseFloat(total) || 0,
+            },
+          ],
+        });
+      } catch (cpeErr) {
+        console.warn('⚠️ No se pudo generar CPE UBL 2.1 en facturación hotel:', cpeErr.message);
+      }
+    }
+
     // Registrar pago
     await Pago.create({
       empresa_id: empresaId,
@@ -62,7 +90,7 @@ export const crearFactura = async (req, res) => {
       const cajaGeneralActiva = await CajaGeneral.findOne({
         where: {
           empresa_id: empresaId,
-          estado: 'abierta',
+          estado: ['Abierta', 'abierta'],
           ...(req.sucursal_id ? { sucursal_id: req.sucursal_id } : {}),
         },
       });
@@ -82,7 +110,7 @@ export const crearFactura = async (req, res) => {
           sucursal_id: req.sucursal_id || null,
           id_caja: cajaGeneralActiva.id,
           id_usuario: req.user?.id || 1,
-          tipo: 'ingreso',
+          tipo: 'Ingreso',
           concepto: `Facturación Hospedaje ${numero}`,
           monto: totalNum,
           metodo_pago,

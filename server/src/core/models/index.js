@@ -8,8 +8,8 @@ import Comunicado from './Comunicado.js';
 import PlanSaaS from './PlanSaaS.js';
 import CajaGeneral from './CajaGeneral.js';
 import CajaMovimientoGeneral from './CajaMovimientoGeneral.js';
+import ComprobanteElectronico from './ComprobanteElectronico.js';
 
-// Relaciones Multi-Tenant Core
 Empresa.hasMany(Sucursal, { foreignKey: 'empresa_id', as: 'sucursales', onDelete: 'CASCADE' });
 Sucursal.belongsTo(Empresa, { foreignKey: 'empresa_id', as: 'empresa' });
 
@@ -34,7 +34,6 @@ AuditoriaLog.belongsTo(Usuario, { foreignKey: 'usuario_id', as: 'usuario' });
 Empresa.hasMany(Comunicado, { foreignKey: 'empresa_id', as: 'comunicados', onDelete: 'CASCADE' });
 Comunicado.belongsTo(Empresa, { foreignKey: 'empresa_id', as: 'empresa' });
 
-// Relaciones de Caja Transversal Unificada
 Empresa.hasMany(CajaGeneral, { foreignKey: 'empresa_id', as: 'cajas', onDelete: 'CASCADE' });
 CajaGeneral.belongsTo(Empresa, { foreignKey: 'empresa_id', as: 'empresa' });
 
@@ -47,6 +46,15 @@ CajaMovimientoGeneral.belongsTo(CajaGeneral, { foreignKey: 'id_caja', as: 'caja'
 Usuario.hasMany(CajaMovimientoGeneral, { foreignKey: 'id_usuario', as: 'movimientos_caja' });
 CajaMovimientoGeneral.belongsTo(Usuario, { foreignKey: 'id_usuario', as: 'usuario' });
 
+Empresa.hasMany(ComprobanteElectronico, { foreignKey: 'empresa_id', as: 'comprobantes_electronicos', onDelete: 'CASCADE' });
+ComprobanteElectronico.belongsTo(Empresa, { foreignKey: 'empresa_id', as: 'empresa' });
+
+Sucursal.hasMany(ComprobanteElectronico, { foreignKey: 'sucursal_id', as: 'comprobantes_electronicos' });
+ComprobanteElectronico.belongsTo(Sucursal, { foreignKey: 'sucursal_id', as: 'sucursal' });
+
+Usuario.hasMany(ComprobanteElectronico, { foreignKey: 'id_usuario', as: 'comprobantes_emitidos' });
+ComprobanteElectronico.belongsTo(Usuario, { foreignKey: 'id_usuario', as: 'usuario' });
+
 export {
   sequelize,
   Empresa,
@@ -58,6 +66,7 @@ export {
   PlanSaaS,
   CajaGeneral,
   CajaMovimientoGeneral,
+  ComprobanteElectronico,
 };
 
 export default {
@@ -71,4 +80,5 @@ export default {
   PlanSaaS,
   CajaGeneral,
   CajaMovimientoGeneral,
+  ComprobanteElectronico,
 };

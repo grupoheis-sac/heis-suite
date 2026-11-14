@@ -10,6 +10,7 @@ import {
   KardexFarmacia
 } from '../models/index.js';
 import { Usuario, CajaGeneral, CajaMovimientoGeneral } from '../../../core/models/index.js';
+import { emitirComprobanteUniversal } from '../../../core/services/sunatUbl.service.js';
 
 export const getVentas = async (req, res) => {
   try {
@@ -232,6 +233,35 @@ export const crearVenta = async (req, res) => {
       }
     }
 
+    // Emitir comprobante electrónico UBL 2.1 en el Core si es Boleta o Factura
+    if (tipo_comprobante === 'Boleta' || tipo_comprobante === 'Factura') {
+      try {
+        const clienteObj = id_cliente ? await Cliente.findByPk(id_cliente, { transaction: t }) : null;
+        await emitirComprobanteUniversal({
+          empresaId,
+          sucursalId: req.sucursal_id || null,
+          usuarioId: userId || 1,
+          origenModulo: 'botica',
+          origenId: venta.id,
+          tipoComprobante: tipo_comprobante,
+          seriePreferida: serie,
+          clienteDocumento: clienteObj ? clienteObj.numero_documento : (paciente_dni || '00000000'),
+          clienteNombre: clienteObj ? clienteObj.razon_social : (paciente_nombre || 'CLIENTE VARIOS'),
+          clienteDireccion: clienteObj ? clienteObj.direccion : '',
+          descuentoGlobal: parseFloat(descuento) || 0,
+          items: items.map((it) => ({
+            id_medicamento: it.id_medicamento || it.id,
+            descripcion: it.nombre || it.descripcion || 'MEDICAMENTO',
+            cantidad: it.cantidad,
+            precio_unitario: it.precio_unitario,
+          })),
+          transaction: t,
+        });
+      } catch (cpeErr) {
+        console.warn('⚠️ No se pudo generar CPE UBL 2.1 en dispensación botica:', cpeErr.message);
+      }
+    }
+
     // Actualizar caja legacy si está abierta
     if (id_caja) {
       const caja = await Caja.findByPk(id_caja, { transaction: t });
@@ -246,7 +276,7 @@ export const crearVenta = async (req, res) => {
       const cajaGeneralActiva = await CajaGeneral.findOne({
         where: {
           empresa_id: req.empresa_id,
-          estado: 'abierta',
+          estado: ['Abierta', 'abierta'],
           ...(req.sucursal_id ? { sucursal_id: req.sucursal_id } : {}),
         },
         transaction: t,
@@ -268,7 +298,7 @@ export const crearVenta = async (req, res) => {
             sucursal_id: req.sucursal_id || null,
             id_caja: cajaGeneralActiva.id,
             id_usuario: userId || 1,
-            tipo: 'ingreso',
+            tipo: 'Ingreso',
             concepto: `Dispensación Botica #${serie}-${numero}`,
             monto: total,
             metodo_pago: tipo_pago,

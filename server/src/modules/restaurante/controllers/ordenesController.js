@@ -1,6 +1,7 @@
 import sequelize from '../../../config/db.js';
 import { Orden, OrdenDetalle, Mesa, Producto } from '../models/index.js';
 import { Usuario, CajaGeneral, CajaMovimientoGeneral } from '../../../core/models/index.js';
+import { emitirComprobanteUniversal } from '../../../core/services/sunatUbl.service.js';
 import { registrarAuditoria } from '../../../core/middleware/auditoria.middleware.js';
 
 export const agregarItemsAMesa = async (req, res, next) => {
@@ -232,12 +233,45 @@ export const cobrarOrden = async (req, res, next) => {
       }
     }
 
+    // Si solicitó Boleta o Factura, emitir automáticamente en el motor UBL 2.1
+    if (document_type === 'Boleta' || document_type === 'Factura') {
+      try {
+        const cpe = await emitirComprobanteUniversal({
+          empresaId: req.empresa_id,
+          sucursalId: req.sucursal_id || null,
+          usuarioId: req.user?.id || orden.user_id || 1,
+          origenModulo: 'restaurante',
+          origenId: orden.id,
+          tipoComprobante: document_type,
+          clienteDocumento: client_document || '00000000',
+          clienteNombre: client_name || 'Público General',
+          descuentoGlobal: desc,
+          items: (orden.detalles || []).map((d) => ({
+            id_producto: d.product_id,
+            descripcion: d.producto?.name || 'CONSUMO RESTAURANTE',
+            cantidad: d.quantity,
+            precio_unitario: d.price,
+          })),
+          transaction: t,
+        });
+        await orden.update(
+          {
+            serie: cpe.serie,
+            correlativo: cpe.correlativo,
+          },
+          { transaction: t }
+        );
+      } catch (sunatErr) {
+        console.warn('⚠️ Advertencia generando CPE UBL 2.1 en cobro de orden:', sunatErr.message);
+      }
+    }
+
     // Impactar en Caja General activa (core_cajas)
     try {
       const cajaActiva = await CajaGeneral.findOne({
         where: {
           empresa_id: req.empresa_id,
-          estado: 'abierta',
+          estado: ['Abierta', 'abierta'],
           ...(req.sucursal_id ? { sucursal_id: req.sucursal_id } : {}),
         },
         transaction: t,
@@ -270,7 +304,7 @@ export const cobrarOrden = async (req, res, next) => {
             sucursal_id: req.sucursal_id || null,
             id_caja: cajaActiva.id,
             id_usuario: req.user?.id || orden.user_id || 1,
-            tipo: 'ingreso',
+            tipo: 'Ingreso',
             concepto: `Cobro Orden #${orden.id} (${document_type}) - ${client_name}`,
             monto: totalFinal,
             metodo_pago: payment_method,
@@ -321,28 +355,40 @@ export const emitirSunatOrden = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Orden no encontrada.' });
     }
 
-    // Emisión simulada / demo en entorno de desarrollo
-    const serie = orden.document_type === 'Factura' ? 'F001' : 'B001';
-    const correlativo = Math.floor(Math.random() * 90000) + 10000;
-    const hash = 'a8f9c4d2e1b07654';
+    const tipoDoc = orden.document_type === 'Factura' ? 'Factura' : 'Boleta';
+    const cpe = await emitirComprobanteUniversal({
+      empresaId: req.empresa_id,
+      sucursalId: req.sucursal_id || orden.sucursal_id || null,
+      usuarioId: req.user?.id || orden.user_id || 1,
+      origenModulo: 'restaurante',
+      origenId: orden.id,
+      tipoComprobante: tipoDoc,
+      clienteDocumento: orden.client_document || '00000000',
+      clienteNombre: orden.client_name || 'Público General',
+      items: (orden.detalles || []).map((d) => ({
+        id_producto: d.product_id,
+        descripcion: d.producto?.name || 'CONSUMO RESTAURANTE',
+        cantidad: d.quantity,
+        precio_unitario: d.price,
+      })),
+    });
 
     await orden.update({
-      sunat_estado: 'ACEPTADO',
-      sunat_hash: hash,
-      sunat_qr: `https://sunat.gob.pe/qr?serie=${serie}&num=${correlativo}`,
-      serie,
-      correlativo,
+      serie: cpe.serie,
+      correlativo: cpe.correlativo,
     });
 
     res.json({
       success: true,
-      message: 'Comprobante emitido a SUNAT exitosamente.',
+      message: `Comprobante ${cpe.numero_formato} emitido a SUNAT exitosamente.`,
       sunat: {
         success: true,
-        sunat_estado: 'ACEPTADO',
-        serie,
-        correlativo,
-        sunat_hash: hash,
+        sunat_estado: cpe.sunat_estado,
+        serie: cpe.serie,
+        correlativo: cpe.correlativo,
+        numero_formato: cpe.numero_formato,
+        sunat_hash: cpe.sunat_hash,
+        sunat_qr: cpe.sunat_qr,
       },
       orden,
     });
