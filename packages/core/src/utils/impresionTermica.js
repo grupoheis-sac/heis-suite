@@ -252,7 +252,7 @@ async function imprimirViaBridgeLocal(escPosBuilder, ticket, configBridge) {
   const endpoint =
     configBridge.bridgeUrl ||
     (typeof localStorage !== 'undefined' ? localStorage.getItem('heis_print_bridge_url') : null) ||
-    'http://127.0.0.1/SERVER_PRINTPOS/PrintDoc.php';
+    'http://127.0.0.1:9101';
 
   const response = await fetch(endpoint, {
     method: 'POST',

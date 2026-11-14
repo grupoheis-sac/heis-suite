@@ -16,18 +16,20 @@ export function getTerminalPrintSettings() {
     return {
       paperFormat: '80mm',
       printMethod: 'AUTO',
-      bridgeUrl: 'http://127.0.0.1/SERVER_PRINTPOS/PrintDoc.php',
+      bridgeUrl: 'http://127.0.0.1:9101',
       printerName: 'POS-80',
       openCashDrawer: true,
     };
   }
 
+  const storedBridge = localStorage.getItem(STORAGE_KEYS.BRIDGE_URL);
+  // Si no está seteado o apunta al legacy PHP, sugerir el agente nativo Node.js 9101
+  const bridgeUrl = storedBridge || 'http://127.0.0.1:9101';
+
   return {
     paperFormat: localStorage.getItem(STORAGE_KEYS.PAPER_FORMAT) || '80mm',
     printMethod: localStorage.getItem(STORAGE_KEYS.PRINT_METHOD) || 'AUTO',
-    bridgeUrl:
-      localStorage.getItem(STORAGE_KEYS.BRIDGE_URL) ||
-      'http://127.0.0.1/SERVER_PRINTPOS/PrintDoc.php',
+    bridgeUrl,
     printerName: localStorage.getItem(STORAGE_KEYS.PRINTER_NAME) || 'POS-80',
     openCashDrawer: localStorage.getItem(STORAGE_KEYS.OPEN_DRAWER) !== 'false',
   };

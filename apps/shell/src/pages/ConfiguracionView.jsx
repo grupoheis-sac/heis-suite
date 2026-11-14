@@ -341,8 +341,8 @@ export default function ConfiguracionView() {
                   },
                   {
                     id: 'BRIDGE_LOCAL',
-                    label: 'Servidor Local (PrintDoc.php)',
-                    sub: 'XAMPP / Agente Local ESC/POS',
+                    label: 'Agente Local (Node.js / PHP)',
+                    sub: 'heis-print-agent (:9101) / PrintDoc',
                     icon: Server,
                   },
                   {
@@ -382,14 +382,14 @@ export default function ConfiguracionView() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-3">
                 <div className="md:col-span-2">
                   <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                    URL del Puente Local de Impresión (<code className="text-indigo-300">SERVER_PRINTPOS / PrintDoc.php</code>)
+                    URL del Agente Local de Impresión (<code className="text-indigo-300">heis-print-agent.mjs / :9101</code> o <code className="text-slate-400">PrintDoc.php</code>)
                   </label>
                   <div className="flex gap-2">
                     <input
                       type="url"
                       value={form.bridgeUrl}
                       onChange={(e) => setForm({ ...form, bridgeUrl: e.target.value })}
-                      placeholder="http://127.0.0.1/SERVER_PRINTPOS/PrintDoc.php"
+                      placeholder="http://127.0.0.1:9101"
                       className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs sm:text-sm font-mono text-slate-200 focus:outline-none focus:border-indigo-500"
                     />
                     <button

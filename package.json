@@ -14,7 +14,8 @@
     "dev:shell": "npm --prefix apps/shell run dev",
     "build": "npm --prefix apps/shell run build",
     "seed": "npm --prefix server run seed",
-    "migrate:cajas": "node server/src/migrations/migration_unificar_cajas.js"
+    "migrate:cajas": "node server/src/migrations/migration_unificar_cajas.js",
+    "print-agent": "node tools/heis-print-agent.mjs"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
