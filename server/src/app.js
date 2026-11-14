@@ -13,6 +13,9 @@ import superadminRoutes from './core/routes/superadmin.routes.js';
 import consultaRoutes from './core/routes/consulta.routes.js';
 import suscripcionesRoutes from './core/routes/suscripciones.routes.js';
 import { obtenerComunicadoActivo, obtenerWhitelabelPublico } from './core/controllers/superadmin.controller.js';
+import { deepHealthcheck } from './core/controllers/health.controller.js';
+import { initBackendSentry, captureTenantException } from './config/sentry.js';
+import { notifyCriticalIncident } from './core/services/alertBot.service.js';
 import { loadModules } from './loader.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -50,6 +53,10 @@ export async function createApp() {
 
   app.get('/health', healthResponse);
   app.get('/api/health', healthResponse);
+  app.get('/api/health/deep', deepHealthcheck);
+
+  // Inicializar observabilidad Sentry en backend
+  initBackendSentry(app);
 
   // Rutas Core Transversales (Siempre activas para todos los giros)
   app.use('/api/auth', authRoutes);
@@ -85,7 +92,25 @@ export async function createApp() {
   // Manejador global de errores (500)
   app.use((err, req, res, next) => {
     console.error('Error no capturado en servidor:', err);
-    res.status(err.status || 500).json({
+
+    if (
+      err.name === 'SequelizeConnectionError' ||
+      err.name === 'SequelizeConnectionRefusedError' ||
+      err.name === 'SequelizeConnectionAcquireTimeoutError'
+    ) {
+      notifyCriticalIncident({
+        type: err.name,
+        severity: 'CRITICAL',
+        title: 'Fallo de Conectividad o Saturación de Pool MySQL',
+        details: `${err.message} (Ruta: ${req.method} ${req.originalUrl})`,
+        empresaId: req.empresa_id || req.body?.empresa_id || null,
+        dedupKey: `db_critical_${err.name}`,
+      }).catch(() => {});
+    } else if (!err.status || err.status >= 500 || !err.statusCode || err.statusCode >= 500) {
+      captureTenantException(err, { path: req.originalUrl, method: req.method });
+    }
+
+    res.status(err.status || err.statusCode || 500).json({
       success: false,
       error: err.message || 'Error interno del servidor en HEIS Suite',
     });

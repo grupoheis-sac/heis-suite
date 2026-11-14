@@ -1,10 +1,11 @@
+// packages/ui/src/components/ErrorBoundary.jsx
 import React from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 
-export default class ErrorBoundary extends React.Component {
+export class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { hasError: false, error: null };
+    this.state = { hasError: false, error: null, eventId: null };
   }
 
   static getDerivedStateFromError(error) {
@@ -12,44 +13,59 @@ export default class ErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, errorInfo) {
-    console.error('ErrorBoundary capturó un error:', error, errorInfo);
+    // Si Sentry está activo en window.__SENTRY_HUB__ o importado en apps/shell
+    if (typeof window !== 'undefined' && window.Sentry?.captureException) {
+      const empresaId = localStorage.getItem('heis_empresa_id') || 'unknown';
+      const sucursalId = localStorage.getItem('heis_sucursal_id') || 'unknown';
+
+      const eventId = window.Sentry.captureException(error, {
+        tags: { empresa_id: empresaId, sucursal_id: sucursalId },
+        extra: { componentStack: errorInfo?.componentStack },
+      });
+      this.setState({ eventId });
+    }
+    console.error('[HEIS_UI_ERROR_BOUNDARY]:', error, errorInfo);
   }
+
+  handleReload = () => {
+    this.setState({ hasError: false, error: null });
+    window.location.reload();
+  };
 
   render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-[400px] flex items-center justify-center p-6">
-          <div className="max-w-md w-full bg-white dark:bg-slate-900 rounded-3xl p-8 border border-rose-200 dark:border-rose-900/50 shadow-xl text-center space-y-4">
-            <div className="w-16 h-16 rounded-2xl bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto">
-              <AlertTriangle className="w-8 h-8" />
+        <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-6">
+          <div className="max-w-md w-full bg-slate-900 border border-rose-500/30 rounded-2xl p-6 text-center space-y-4 shadow-2xl">
+            <div className="w-12 h-12 rounded-2xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center mx-auto text-rose-400">
+              <AlertTriangle className="w-6 h-6" />
             </div>
-            <div>
-              <h3 className="text-lg font-black text-slate-800 dark:text-white">
-                Ocurrió un problema inesperado
-              </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                La vista encontró un error al procesar los datos. Puedes intentar recargar.
-              </p>
-            </div>
-            {this.state.error?.message && (
-              <div className="p-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-[11px] font-mono text-slate-600 dark:text-slate-300 text-left overflow-x-auto max-h-28">
-                {this.state.error.message}
+            <h2 className="text-lg font-bold text-white">
+              Se detectó una anomalía inesperada en el módulo
+            </h2>
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Nuestro sistema de telemetría ha registrado el incidente automáticamente para el equipo de ingeniería de HEIS. Tus transacciones en servidor están protegidas.
+            </p>
+            {this.state.eventId && (
+              <div className="text-[11px] font-mono text-slate-500 bg-slate-950 py-1.5 px-3 rounded-lg border border-slate-800">
+                Código de Auditoría: {this.state.eventId}
               </div>
             )}
             <button
-              onClick={() => {
-                this.setState({ hasError: false, error: null });
-                window.location.reload();
-              }}
-              className="w-full py-2.5 px-4 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-extrabold text-xs shadow-md shadow-amber-600/30 flex items-center justify-center gap-2 transition-all cursor-pointer"
+              type="button"
+              onClick={this.handleReload}
+              className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold inline-flex items-center justify-center gap-2 transition cursor-pointer"
             >
               <RefreshCw className="w-4 h-4" />
-              Recargar Vista
+              Recargar Módulo de Forma Segura
             </button>
           </div>
         </div>
       );
     }
+
     return this.props.children;
   }
 }
+
+export default ErrorBoundary;

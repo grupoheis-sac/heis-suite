@@ -10,6 +10,8 @@ export function getCurrentTenant() {
   return tenantStorage.getStore() || null;
 }
 
+export const getTenantContext = getCurrentTenant;
+
 export function getCachedEmpresa(empresaId) {
   if (!empresaId) return null;
   const key = String(empresaId);

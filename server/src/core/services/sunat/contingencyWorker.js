@@ -7,12 +7,15 @@ import { ComprobanteElectronico, Empresa } from '../../models/index.js';
 import { resolveSafeTenantPath, decryptCertPassword } from './certService.js';
 import { enviarComprobanteSunatConResiliencia, consultarCdrSunat } from './soapService.js';
 import { emitToTenantSucursal } from '../realtime.service.js';
+import { notifySunatRejectionAlert } from '../alertBot.service.js';
 
 const STORAGE_ROOT = path.resolve(process.cwd(), 'storage');
 const MAX_INTENTOS = 10;
 const BATCH_SIZE = 15;
 let workerTimer = null;
 let isRunningBatch = false;
+let lastSweepAt = null;
+let lastBatchProcessedCount = 0;
 
 /**
  * Calcula el próximo reintento usando Backoff Exponencial + Jitter aleatorio
@@ -174,6 +177,17 @@ async function procesarComprobante(cpe) {
         },
         { skipTenant: true, skipTenantScope: true }
       );
+
+      if (agotado) {
+        notifySunatRejectionAlert({
+          empresa,
+          comprobante: cpe,
+          codigoSunat: 'MAX_RETRIES_EXCEEDED',
+          motivoSunat: respuesta.motivo,
+          esCriticoAgotado: true,
+        }).catch(() => {});
+      }
+
       return;
     }
 
@@ -261,6 +275,15 @@ async function procesarComprobante(cpe) {
         codigo: respuesta.codigoSunat,
         motivo: respuesta.mensajeSunat,
       });
+
+      notifySunatRejectionAlert({
+        empresa,
+        comprobante: cpe,
+        codigoSunat: respuesta.codigoSunat,
+        motivoSunat: respuesta.mensajeSunat,
+        esCriticoAgotado: false,
+      }).catch(() => {});
+
       return;
     }
 
@@ -297,6 +320,8 @@ export async function ejecutarCicloContingenciaSunat() {
 
   try {
     const lote = await reclamarLotePendiente();
+    lastSweepAt = new Date().toISOString();
+    lastBatchProcessedCount = lote?.length || 0;
     if (lote && lote.length > 0) {
       await Promise.allSettled(lote.map((cpe) => procesarComprobante(cpe)));
     }
@@ -305,6 +330,15 @@ export async function ejecutarCicloContingenciaSunat() {
   } finally {
     isRunningBatch = false;
   }
+}
+
+export function getSunatWorkerHealth() {
+  return {
+    active: Boolean(workerTimer),
+    isRunningBatch,
+    lastSweepAt,
+    lastBatchProcessedCount,
+  };
 }
 
 /**
@@ -328,4 +362,5 @@ export default {
   startSunatContingencyWorker,
   stopSunatContingencyWorker,
   ejecutarCicloContingenciaSunat,
+  getSunatWorkerHealth,
 };
