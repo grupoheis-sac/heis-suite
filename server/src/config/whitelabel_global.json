@@ -7,8 +7,8 @@
   "bgPreset": "minimal_dark",
   "bgCustomUrl": "",
   "colorPrimario": "#02CBA9",
-  "colorFondoHead": "#ffffff",
-  "colorFondoBody": "#f8fafc",
+  "colorFondoHead": "#230101",
+  "colorFondoBody": "#526e89",
   "mostrarCopyright": true,
   "textoCopyright": "© 2026 HEIS Suite SAC. Todos los derechos reservados.",
   "estiloCard": "glass"

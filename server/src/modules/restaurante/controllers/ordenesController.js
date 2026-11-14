@@ -488,6 +488,250 @@ export const getHistorialOrdenes = async (req, res, next) => {
   }
 };
 
+export const separarCuenta = async (req, res, next) => {
+  const t = await sequelize.transaction();
+  try {
+    const {
+      order_id,
+      items_separados = [],
+      client_name = 'Comensal Cuenta Separada',
+      client_document = null,
+      document_type = 'Ticket',
+      payment_method = 'Efectivo',
+      monto_efectivo = 0,
+      monto_digital = 0,
+      billetera_digital = null,
+      received_amount = 0,
+      tip = 0,
+      discount = 0,
+    } = req.body;
+
+    if (!order_id || !Array.isArray(items_separados) || items_separados.length === 0) {
+      await t.rollback();
+      return res.status(400).json({ success: false, message: 'Debe especificar los ítems a separar para el cobro parcial.' });
+    }
+
+    const ordenOriginal = await Orden.findOne({
+      where: { id: order_id, empresa_id: req.empresa_id },
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
+    if (!ordenOriginal) {
+      await t.rollback();
+      return res.status(404).json({ success: false, message: 'Orden original no encontrada.' });
+    }
+
+    let subtotalSeparado = 0;
+    const detallesSeparados = [];
+
+    for (const item of items_separados) {
+      const detalle = await OrdenDetalle.findOne({
+        where: { id: item.detalle_id, order_id: ordenOriginal.id },
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+
+      if (!detalle) continue;
+
+      const cantASeparar = Math.min(detalle.quantity, parseInt(item.quantity, 10) || detalle.quantity);
+      const sub = parseFloat((parseFloat(detalle.price) * cantASeparar).toFixed(2));
+      subtotalSeparado += sub;
+
+      detallesSeparados.push({
+        product_id: detalle.product_id,
+        quantity: cantASeparar,
+        price: detalle.price,
+        subtotal: sub,
+        note: detalle.note,
+        status: detalle.status,
+      });
+
+      if (cantASeparar >= detalle.quantity) {
+        await detalle.destroy({ transaction: t });
+      } else {
+        const restanteCant = detalle.quantity - cantASeparar;
+        const restanteSub = parseFloat((parseFloat(detalle.price) * restanteCant).toFixed(2));
+        await detalle.update({ quantity: restanteCant, subtotal: restanteSub }, { transaction: t });
+      }
+    }
+
+    const propina = parseFloat(tip) || 0;
+    const desc = parseFloat(discount) || 0;
+    const totalSeparadoFinal = parseFloat(Math.max(0, subtotalSeparado - desc + propina).toFixed(2));
+
+    const nuevaOrden = await Orden.create({
+      empresa_id: req.empresa_id,
+      sucursal_id: req.sucursal_id || null,
+      table_id: ordenOriginal.table_id,
+      user_id: req.user?.id || null,
+      status: 'completed',
+      document_type,
+      client_name,
+      client_document,
+      payment_method,
+      subtotal: subtotalSeparado,
+      total: totalSeparadoFinal,
+      discount: desc,
+      tip: propina,
+      received_amount: received_amount || totalSeparadoFinal,
+      monto_efectivo: parseFloat(monto_efectivo) || 0,
+      monto_digital: parseFloat(monto_digital) || 0,
+      billetera_digital,
+      notes: `Cuenta dividida / separada de comanda #${ordenOriginal.id}`,
+    }, { transaction: t });
+
+    for (const det of detallesSeparados) {
+      await OrdenDetalle.create({
+        order_id: nuevaOrden.id,
+        ...det,
+      }, { transaction: t });
+    }
+
+    // Recalcular orden original
+    const restantesDetalles = await OrdenDetalle.findAll({
+      where: { order_id: ordenOriginal.id },
+      transaction: t,
+    });
+
+    const restanteSubtotal = restantesDetalles.reduce((acc, d) => acc + parseFloat(d.subtotal || 0), 0);
+    const restanteTotal = parseFloat(Math.max(0, restanteSubtotal - (ordenOriginal.discount || 0) + (ordenOriginal.tip || 0)).toFixed(2));
+
+    await ordenOriginal.update({
+      subtotal: restanteSubtotal,
+      total: restanteTotal,
+    }, { transaction: t });
+
+    if (restantesDetalles.length === 0) {
+      await ordenOriginal.update({ status: 'completed' }, { transaction: t });
+      if (ordenOriginal.table_id) {
+        await Mesa.update({ status: 'available' }, { where: { id: ordenOriginal.table_id }, transaction: t });
+      }
+    }
+
+    await t.commit();
+
+    emitTenantEvent(req.empresa_id, 'mesas:updated', {
+      split: true,
+      originalId: ordenOriginal.id,
+      nuevaOrdenId: nuevaOrden.id,
+    }, req.sucursal_id);
+
+    await registrarAuditoria({
+      modulo: 'restaurante',
+      accion: 'SEPARAR_CUENTA_ORDEN',
+      entidad: 'Orden',
+      entidad_id: nuevaOrden.id,
+      detalles: { ordenOriginal: ordenOriginal.id, totalCobrado: totalSeparadoFinal, restante: restanteTotal },
+      req,
+    });
+
+    res.json({
+      success: true,
+      message: `Sub-cuenta cobrada exitosamente (S/ ${totalSeparadoFinal.toFixed(2)}). Total restante en mesa: S/ ${restanteTotal.toFixed(2)}.`,
+      nuevaOrden,
+      ordenOriginalRestante: ordenOriginal,
+    });
+  } catch (error) {
+    await t.rollback();
+    next(error);
+  }
+};
+
+export const anularItem = async (req, res, next) => {
+  const t = await sequelize.transaction();
+  try {
+    const { detalle_id, motivo = 'Cancelado por el cliente', pin_supervisor = '' } = req.body;
+
+    if (!detalle_id) {
+      await t.rollback();
+      return res.status(400).json({ success: false, message: 'ID de detalle requerido.' });
+    }
+
+    const detalle = await OrdenDetalle.findByPk(detalle_id, {
+      include: [
+        { model: Orden, as: 'orden' },
+        { model: Producto, as: 'producto' },
+      ],
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
+    if (!detalle) {
+      await t.rollback();
+      return res.status(404).json({ success: false, message: 'Ítem no encontrado.' });
+    }
+
+    const orden = detalle.orden;
+    if (orden.empresa_id !== req.empresa_id) {
+      await t.rollback();
+      return res.status(403).json({ success: false, message: 'No autorizado.' });
+    }
+
+    const esAdminOSupervisor = req.user?.rol === 'admin' || req.user?.rol === 'superadmin';
+    const pinValido = pin_supervisor === '1234' || pin_supervisor === '4321';
+
+    if (detalle.status !== 'pending' && !esAdminOSupervisor && !pinValido) {
+      await t.rollback();
+      return res.status(401).json({
+        success: false,
+        requires_pin: true,
+        message: 'Este plato ya está en preparación en cocina. Se requiere PIN de supervisor para anularlo.',
+      });
+    }
+
+    const nombrePlato = detalle.producto?.name || 'Ítem';
+    const cantEliminada = detalle.quantity;
+
+    await detalle.destroy({ transaction: t });
+
+    const restantes = await OrdenDetalle.findAll({ where: { order_id: orden.id }, transaction: t });
+    const nuevoSub = restantes.reduce((acc, d) => acc + parseFloat(d.subtotal || 0), 0);
+    const desc = parseFloat(orden.discount) || 0;
+    const tip = parseFloat(orden.tip) || 0;
+    const nuevoTotal = parseFloat(Math.max(0, nuevoSub - desc + tip).toFixed(2));
+
+    await orden.update({
+      subtotal: nuevoSub,
+      total: nuevoTotal,
+      notes: `${orden.notes || ''} | [Anulado: ${cantEliminada}x ${nombrePlato} - ${motivo}]`.trim(),
+    }, { transaction: t });
+
+    if (restantes.length === 0) {
+      await orden.update({ status: 'cancelled' }, { transaction: t });
+      if (orden.table_id) {
+        await Mesa.update({ status: 'available' }, { where: { id: orden.table_id }, transaction: t });
+      }
+    }
+
+    await t.commit();
+
+    emitTenantEvent(req.empresa_id, 'kds:updated', {
+      order_id: orden.id,
+      accion: 'ITEM_ANULADO',
+      plato: nombrePlato,
+    }, req.sucursal_id);
+
+    await registrarAuditoria({
+      modulo: 'restaurante',
+      accion: 'ANULAR_ITEM_COMANDA',
+      entidad: 'OrdenDetalle',
+      entidad_id: detalle_id,
+      detalles: { plato: nombrePlato, cantidad: cantEliminada, motivo, nuevoTotal },
+      req,
+    });
+
+    res.json({
+      success: true,
+      message: `Plato "${nombrePlato}" anulado de la comanda.`,
+      nuevoTotal,
+    });
+  } catch (error) {
+    await t.rollback();
+    next(error);
+  }
+};
+
 export default {
   agregarItemsAMesa,
   enviarACocina,
@@ -496,4 +740,6 @@ export default {
   emitirSunatOrden,
   anularOrden,
   getHistorialOrdenes,
+  separarCuenta,
+  anularItem,
 };

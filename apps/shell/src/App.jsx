@@ -296,11 +296,15 @@ export default function App() {
   return (
     <EmpresaProvider>
       <Toaster
-        position="top-right"
+        position="bottom-right"
         containerClassName="!z-[9999]"
         gutter={8}
         toastOptions={{
           duration: 3500,
+        }}
+        containerStyle={{
+          bottom: 24,
+          right: 24,
         }}
       >
         {(t) => <UnifiedToastItem t={t} isDark={isDark} />}

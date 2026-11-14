@@ -23,11 +23,32 @@ import {
   RotateCw,
   Flame,
   CheckCircle2,
-  ArrowRight
+  ArrowRight,
+  ArrowRightLeft,
+  GitMerge,
+  Split,
+  AlertTriangle,
+  CheckSquare,
+  Square,
+  ShoppingBag,
+  Bike
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import toast from 'react-hot-toast';
 import { TicketImpresion } from '@heis/ui';
+
+const OBSERVACIONES_RAPIDAS = [
+  'Papas bien doradas',
+  'Pechuga parte pierna',
+  'Sin ensalada',
+  'Cremas aparte',
+  'Término medio',
+  'Término 3/4',
+  'Sin sal',
+  'Sin hielo',
+  'Poco ají',
+  'Para llevar'
+];
 
 export default function Mesas() {
   const [areas, setAreas] = useState([]);
@@ -71,6 +92,28 @@ export default function Mesas() {
     tip: 0,
     received_amount: ''
   });
+
+  // ─── NUEVAS CAPACIDADES GASTRONÓMICAS COMPETITIVAS ───
+  // 1. Modo Consola Mozo (Comandera Rápida Móvil)
+  const [modoMozo, setModoMozo] = useState(false);
+
+  // 2. Operaciones de Salón: Cambiar Mesa
+  const [modalCambiarMesa, setModalCambiarMesa] = useState(false);
+  const [mesaDestinoSeleccionada, setMesaDestinoSeleccionada] = useState(null);
+  const [motivoCambioMesa, setMotivoCambioMesa] = useState('Solicitado por el cliente');
+  const [procesandoCambioMesa, setProcesandoCambioMesa] = useState(false);
+
+  // 3. Operaciones de Salón: Unir Mesas
+  const [modalUnirMesas, setModalUnirMesas] = useState(false);
+  const [mesasParaUnir, setMesasParaUnir] = useState([]);
+  const [procesandoUnirMesas, setProcesandoUnirMesas] = useState(false);
+
+  // 4. Precios por Canal ('salon' | 'takeaway' | 'delivery')
+  const [canalComanda, setCanalComanda] = useState('salon');
+
+  // 5. División de Cuentas (Split Bill)
+  const [modoDividirCuenta, setModoDividirCuenta] = useState(false);
+  const [itemsParaDividir, setItemsParaDividir] = useState({}); // { [detalle_id]: cantidad }
 
   const cargarDatos = async () => {
     try {
@@ -121,6 +164,13 @@ export default function Mesas() {
   };
 
   const agregarAComanda = (prod, nota = '') => {
+    let precioFinal = parseFloat(prod.price) || 0;
+    if (canalComanda === 'takeaway' && prod.price_takeaway) {
+      precioFinal = parseFloat(prod.price_takeaway);
+    } else if (canalComanda === 'delivery' && prod.price_delivery) {
+      precioFinal = parseFloat(prod.price_delivery);
+    }
+
     const existingIndex = itemsComanda.findIndex(
       (i) => i.product_id === prod.id && i.note === nota
     );
@@ -134,7 +184,7 @@ export default function Mesas() {
         {
           product_id: prod.id,
           name: prod.name,
-          price: parseFloat(prod.price),
+          price: precioFinal,
           quantity: 1,
           note: nota
         }
@@ -144,26 +194,27 @@ export default function Mesas() {
 
   const enviarComanda = async () => {
     if (itemsComanda.length === 0) {
-      alert('Agregue al menos un plato o bebida a la comanda.');
+      toast.error('Agregue al menos un plato o bebida a la comanda.');
       return;
     }
 
     try {
       const res = await api.post('/ordenes/agregar', {
         table_id: mesaSeleccionada.id,
-        items: itemsComanda
+        items: itemsComanda,
+        channel: canalComanda
       });
 
       if (res.success) {
         // Enviar a cocina
         await api.post('/ordenes/cocina', { order_id: res.orden.id });
-        alert('¡Comanda enviada a Cocina y Bar con éxito!');
+        toast.success('¡Comanda enviada a Cocina y Bar con éxito!');
         setModalComanda(false);
         setItemsComanda([]);
         cargarDatos();
       }
     } catch (err) {
-      alert(err.response?.data?.message || 'Error al enviar comanda');
+      toast.error(err.response?.data?.message || 'Error al enviar comanda');
     }
   };
 
@@ -171,11 +222,166 @@ export default function Mesas() {
     try {
       const res = await api.post('/ordenes/pedir-cuenta', { table_id: mesaId });
       if (res.success) {
+        toast.success('Pre-cuenta solicitada. Mesa marcada por cobrar.');
         cargarDatos();
       }
     } catch (err) {
-      alert('Error al pedir precuenta');
+      toast.error('Error al pedir precuenta');
     }
+  };
+
+  const ejecutarCambiarMesa = async () => {
+    if (!mesaSeleccionada || !mesaDestinoSeleccionada) {
+      toast.error('Seleccione la mesa de destino.');
+      return;
+    }
+    setProcesandoCambioMesa(true);
+    try {
+      const res = await api.post('/mesas/cambiar-mesa', {
+        mesaOrigenId: mesaSeleccionada.id,
+        mesaDestinoId: mesaDestinoSeleccionada.id,
+        motivo: motivoCambioMesa
+      });
+      if (res.success) {
+        toast.success(res.message || `Mesa transferida a ${mesaDestinoSeleccionada.name}`);
+        setModalCambiarMesa(false);
+        setMesaSeleccionada(null);
+        setMesaDestinoSeleccionada(null);
+        cargarDatos();
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Error al cambiar mesa');
+    } finally {
+      setProcesandoCambioMesa(false);
+    }
+  };
+
+  const ejecutarUnirMesas = async () => {
+    if (!mesaSeleccionada || mesasParaUnir.length === 0) {
+      toast.error('Seleccione al menos una mesa secundaria para unir.');
+      return;
+    }
+    setProcesandoUnirMesas(true);
+    try {
+      const res = await api.post('/mesas/unir-mesas', {
+        mesaPrincipalId: mesaSeleccionada.id,
+        mesasSecundariasIds: mesasParaUnir
+      });
+      if (res.success) {
+        toast.success(res.message || 'Mesas unificadas con éxito');
+        setModalUnirMesas(false);
+        setMesasParaUnir([]);
+        cargarDatos();
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Error al unir mesas');
+    } finally {
+      setProcesandoUnirMesas(false);
+    }
+  };
+
+  const ejecutarCobroSeparado = async (e) => {
+    if (e?.preventDefault) e.preventDefault();
+    const ordenActiva = mesaSeleccionada?.ordenes?.[0];
+    if (!ordenActiva) return;
+
+    const itemsPayload = Object.entries(itemsParaDividir)
+      .filter(([_, cant]) => cant > 0)
+      .map(([detId, cant]) => ({ detalle_id: parseInt(detId, 10), quantity: cant }));
+
+    if (itemsPayload.length === 0) {
+      toast.error('Seleccione al menos un plato a cobrar en esta parte.');
+      return;
+    }
+
+    if (datosCobro.document_type === 'Factura' && (!datosCobro.client_document || datosCobro.client_document.length !== 11)) {
+      toast.error('Las Facturas requieren un RUC válido de 11 dígitos');
+      return;
+    }
+
+    const subtotalSeparado = ordenActiva.detalles
+      ?.filter(d => itemsParaDividir[d.id] > 0)
+      ?.reduce((acc, d) => acc + (itemsParaDividir[d.id] * parseFloat(d.unit_price || 0)), 0) || 0;
+    const desc = parseFloat(datosCobro.discount) || 0;
+    const propina = parseFloat(datosCobro.tip) || 0;
+    const totalPagar = Math.max(0, subtotalSeparado - desc + propina);
+    const recibido = parseFloat(datosCobro.received_amount) || totalPagar;
+
+    setProcesandoCobro(true);
+    try {
+      const res = await api.post('/ordenes/separar-cuenta', {
+        order_id: ordenActiva.id,
+        items_separados: itemsPayload,
+        client_name: datosCobro.client_name,
+        client_document: datosCobro.client_document,
+        document_type: datosCobro.document_type,
+        payment_method: datosCobro.payment_method,
+        received_amount: recibido,
+        tip: propina,
+        discount: desc,
+        monto_efectivo: parseFloat(datosCobro.monto_efectivo) || 0,
+        monto_digital: parseFloat(datosCobro.monto_digital) || 0,
+        billetera_digital: datosCobro.billetera_digital
+      });
+
+      if (res.success) {
+        confetti({ particleCount: 50, spread: 60, origin: { y: 0.6 } });
+        toast.success(res.message || 'Sub-cuenta cobrada exitosamente');
+        setModalCobrar(false);
+        setItemsParaDividir({});
+        setModoDividirCuenta(false);
+
+        // Ticket para la cuenta separada
+        if (res.nuevaOrden) {
+          setTicketData({
+            empresa: {
+              razon_social: 'HEIS SAC',
+              ruc: '20601234567',
+              direccion: 'Av. El Sol 450 - Lima, Perú',
+              telefono: '(01) 456-7890'
+            },
+            orden: {
+              ...res.nuevaOrden,
+              mesa_numero: `${mesaSeleccionada.name} (Sub-cuenta)`,
+              total: res.nuevaOrden.total
+            },
+            comprobante: res.sunat ? {
+              tipo_documento: datosCobro.document_type === 'Factura' ? '01' : '03',
+              numero_completo: `${res.sunat.serie || 'B001'}-${String(res.nuevaOrden.id).padStart(8, '0')}`,
+              hash: res.sunat.sunat_hash
+            } : null,
+            items: res.nuevaOrden.detalles || [],
+            pago: {
+              metodo: datosCobro.payment_method,
+              recibido,
+              vuelto: Math.max(0, recibido - totalPagar)
+            }
+          });
+          setMostrarTicket(true);
+        }
+
+        cargarDatos();
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Error al separar y cobrar cuenta');
+    } finally {
+      setProcesandoCobro(false);
+    }
+  };
+
+  const calcularSemaforo = (mesa) => {
+    const ordenActiva = mesa.ordenes?.[0];
+    if (!ordenActiva) return null;
+    const fecha = ordenActiva.created_at || ordenActiva.createdAt;
+    if (!fecha) return null;
+    const diffMin = Math.max(0, Math.floor((new Date() - new Date(fecha)) / 60000));
+    if (diffMin >= 30) {
+      return { min: diffMin, clase: 'bg-rose-50 dark:bg-rose-950/70 text-rose-600 dark:text-rose-400 border-rose-200/80 dark:border-rose-800/60 animate-pulse', alerta: true };
+    }
+    if (diffMin >= 15) {
+      return { min: diffMin, clase: 'bg-amber-50 dark:bg-amber-950/70 text-amber-600 dark:text-amber-400 border-amber-200/80 dark:border-amber-800/60', alerta: false };
+    }
+    return { min: diffMin, clase: 'bg-emerald-50 dark:bg-emerald-950/70 text-emerald-600 dark:text-emerald-400 border-emerald-200/80 dark:border-emerald-800/60', alerta: false };
   };
 
   const ejecutarCobro = async (e) => {
@@ -342,6 +548,34 @@ export default function Mesas() {
             )}
           </div>
 
+          {/* Selector de Modo: Salón vs Consola Mozo */}
+          <div className="flex bg-slate-100 dark:bg-slate-800 p-0.5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xs">
+            <button
+              type="button"
+              onClick={() => setModoMozo(false)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                !modoMozo
+                  ? 'bg-white dark:bg-slate-900 text-slate-800 dark:text-white shadow-2xs font-sora'
+                  : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'
+              }`}
+            >
+              <Building2 className="w-3.5 h-3.5 text-amber-500" />
+              <span className="hidden md:inline">Salón</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setModoMozo(true)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                modoMozo
+                  ? 'bg-amber-600 text-white shadow-2xs font-sora'
+                  : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'
+              }`}
+            >
+              <Smartphone className="w-3.5 h-3.5" />
+              <span>Consola Mozo</span>
+            </button>
+          </div>
+
           {/* Botón de Actualización Rápida en Vivo */}
           <button
             type="button"
@@ -362,7 +596,173 @@ export default function Mesas() {
         </div>
       </div>
 
-      {/* ─── 2. TARJETAS KPI (ESTILO DASHBOARD) ─── */}
+      {modoMozo ? (
+        /* ─── MODO CONSOLA MOZO: VISTA TOUCH MÓVIL DE ALTA VELOCIDAD ─── */
+        <div className="space-y-4">
+          {/* Quick Area Tabs (Grandes para pulgares) */}
+          <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+            <button
+              type="button"
+              onClick={() => setAreaActiva('todas')}
+              className={`px-4 py-2.5 rounded-2xl text-xs font-black whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer font-sora ${
+                areaActiva === 'todas'
+                  ? 'bg-amber-600 text-white shadow-md shadow-amber-600/30 ring-2 ring-amber-500/20'
+                  : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300'
+              }`}
+            >
+              <Building2 className="w-4 h-4" />
+              <span>Todas las Zonas ({totalMesasGeneral})</span>
+            </button>
+            {areas.map((a) => (
+              <button
+                key={a.id}
+                type="button"
+                onClick={() => setAreaActiva(a.id)}
+                className={`px-4 py-2.5 rounded-2xl text-xs font-black whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer font-sora ${
+                  areaActiva.toString() === a.id.toString()
+                    ? 'bg-amber-600 text-white shadow-md shadow-amber-600/30 ring-2 ring-amber-500/20'
+                    : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300'
+                }`}
+              >
+                <UtensilsCrossed className="w-4 h-4" />
+                <span>{a.name} ({a.mesas?.length || 0})</span>
+              </button>
+            ))}
+          </div>
+
+          {/* Barra de Estado Mozo */}
+          <div className="flex items-center justify-between bg-white dark:bg-slate-900 p-3 rounded-2xl border border-slate-200 dark:border-slate-800">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span className="text-xs font-black text-slate-800 dark:text-slate-100 font-sora">
+                Consola Rápida Mozo
+              </span>
+            </div>
+            <div className="flex items-center gap-2 text-xs font-bold font-mono">
+              <span className="text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-lg border border-emerald-200 dark:border-emerald-800">
+                {libresGeneral} Libres
+              </span>
+              <span className="text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/60 px-2 py-0.5 rounded-lg border border-rose-200 dark:border-rose-800">
+                {ocupadasGeneral + billedGeneral} Ocupadas
+              </span>
+            </div>
+          </div>
+
+          {/* Grid Táctil Mozo */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
+            {mesasMostradas.map((mesa) => {
+              const ordenActiva = mesa.ordenes?.[0];
+              const esLibre = mesa.status === 'available';
+              const sem = calcularSemaforo(mesa);
+
+              return (
+                <div
+                  key={mesa.id}
+                  className={`p-3.5 rounded-3xl border transition-all flex flex-col justify-between select-none ${
+                    esLibre
+                      ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800/60 hover:border-emerald-500'
+                      : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-sm'
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-mono text-[10px] font-bold text-slate-400 truncate max-w-[100px]">
+                        {mesa.areaNombre}
+                      </span>
+                      {sem && (
+                        <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9.5px] font-mono font-bold border ${sem.clase}`}>
+                          {sem.alerta && <AlertTriangle className="w-3 h-3" />}
+                          {sem.min} min
+                        </span>
+                      )}
+                    </div>
+
+                    <h3 className="text-xl font-black text-slate-900 dark:text-slate-100 font-sora">
+                      {mesa.name}
+                    </h3>
+
+                    {ordenActiva ? (
+                      <div className="mt-2 space-y-1">
+                        <div className="text-lg font-black text-amber-600 dark:text-amber-400 font-sora">
+                          S/ {parseFloat(ordenActiva.total || 0).toFixed(2)}
+                        </div>
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                          {ordenActiva.detalles?.length || 0} platos marchando
+                        </div>
+                        {ordenActiva.mozo && (
+                          <div className="text-[10px] text-slate-400 truncate">
+                            Mozo: {ordenActiva.mozo.name}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="mt-2 text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>Disponible</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Acciones Táctiles Rápidas */}
+                  <div className="mt-3.5 pt-2 border-t border-slate-100 dark:border-slate-800/80 space-y-1.5">
+                    {esLibre ? (
+                      <button
+                        type="button"
+                        onClick={() => abrirMesa(mesa)}
+                        className="w-full py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 text-white text-xs font-black shadow-md shadow-emerald-600/20 active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer font-sora"
+                      >
+                        <Plus className="w-4 h-4" />
+                        <span>Tomar Comanda</span>
+                      </button>
+                    ) : (
+                      <div className="space-y-1.5">
+                        <div className="grid grid-cols-2 gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => abrirMesa(mesa)}
+                            className="py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-black flex items-center justify-center gap-1 cursor-pointer active:scale-95 font-sora shadow-sm"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>+ Plato</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (mesa.status === 'billed') {
+                                abrirCobro(mesa);
+                              } else {
+                                pedirPrecuenta(mesa.id);
+                              }
+                            }}
+                            className="py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-800 dark:text-slate-100 text-xs font-bold flex items-center justify-center gap-1 cursor-pointer active:scale-95 font-sora"
+                          >
+                            <Receipt className="w-3.5 h-3.5 text-amber-500" />
+                            <span>{mesa.status === 'billed' ? 'Cobrar' : 'Cuenta'}</span>
+                          </button>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMesaSeleccionada(mesa);
+                            setMesaDestinoSeleccionada(null);
+                            setModalCambiarMesa(true);
+                          }}
+                          className="w-full py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-300 hover:text-sky-500 text-[10.5px] font-bold flex items-center justify-center gap-1 border border-slate-200/60 dark:border-slate-700/60 cursor-pointer"
+                        >
+                          <ArrowRightLeft className="w-3 h-3 text-sky-500" />
+                          <span>Cambiar de Mesa</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* ─── 2. TARJETAS KPI (ESTILO DASHBOARD) ─── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-3.5">
         {/* KPI Total */}
         <div
@@ -768,16 +1168,27 @@ export default function Mesas() {
                         <h3 className="text-lg sm:text-xl font-black text-slate-800 dark:text-slate-100 tracking-tight truncate font-sora">
                           {mesa.name}
                         </h3>
-                        <div className="flex items-center gap-2 text-[10.5px] text-slate-400 font-medium mt-0.5">
+                        <div className="flex items-center gap-2 text-[10.5px] text-slate-400 font-medium mt-0.5 flex-wrap">
                           <span className="flex items-center gap-1">
                             <Users className="w-3 h-3 text-slate-400" /> {mesa.seats} sillas
                           </span>
-                          {ordenActiva && (
-                            <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400 font-semibold font-mono">
-                              <Clock className="w-3 h-3" />
-                              {new Date(ordenActiva.created_at).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}
-                            </span>
-                          )}
+                          {ordenActiva && (() => {
+                            const sem = calcularSemaforo(mesa);
+                            return (
+                              <div className="flex items-center gap-1.5">
+                                <span className="flex items-center gap-1 text-slate-500 dark:text-slate-400 font-semibold font-mono">
+                                  <Clock className="w-3 h-3" />
+                                  {new Date(ordenActiva.created_at || ordenActiva.createdAt || Date.now()).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                                {sem && (
+                                  <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-mono font-bold border ${sem.clase}`}>
+                                    {sem.alerta && <AlertTriangle className="w-2.5 h-2.5" />}
+                                    {sem.min} min
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </div>
                       </div>
                     </div>
@@ -835,35 +1246,67 @@ export default function Mesas() {
                         <span>Ocupar y Comandar</span>
                       </button>
                     ) : (
-                      <div className="grid grid-cols-2 gap-2">
-                        <button
-                          type="button"
-                          onClick={() => abrirMesa(mesa)}
-                          className="py-2 px-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all border border-slate-200/80 dark:border-slate-700/80 flex items-center justify-center gap-1 cursor-pointer active:scale-95 font-sora"
-                        >
-                          <Plus className="w-3.5 h-3.5 text-amber-500" />
-                          <span>+ Platos</span>
-                        </button>
+                      <div className="space-y-1.5">
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => abrirMesa(mesa)}
+                            className="py-2 px-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all border border-slate-200/80 dark:border-slate-700/80 flex items-center justify-center gap-1 cursor-pointer active:scale-95 font-sora"
+                          >
+                            <Plus className="w-3.5 h-3.5 text-amber-500" />
+                            <span>+ Platos</span>
+                          </button>
 
-                        {esBilled ? (
+                          {esBilled ? (
+                            <button
+                              type="button"
+                              onClick={() => abrirCobro(mesa)}
+                              className="py-2 px-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-black transition-all shadow-md shadow-emerald-600/20 flex items-center justify-center gap-1 cursor-pointer active:scale-95 font-sora"
+                            >
+                              <Receipt className="w-3.5 h-3.5" />
+                              <span>Cobrar</span>
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => pedirPrecuenta(mesa.id)}
+                              className="py-2 px-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white text-xs font-bold transition-all shadow-md shadow-amber-500/20 flex items-center justify-center gap-1 cursor-pointer active:scale-95 font-sora"
+                            >
+                              <Receipt className="w-3.5 h-3.5" />
+                              <span>Pre-cuenta</span>
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Operaciones de Salón: Cambiar Mesa y Unir Mesas */}
+                        <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-100 dark:border-slate-800/80">
                           <button
                             type="button"
-                            onClick={() => abrirCobro(mesa)}
-                            className="py-2 px-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-black transition-all shadow-md shadow-emerald-600/20 flex items-center justify-center gap-1 cursor-pointer active:scale-95 font-sora"
+                            onClick={() => {
+                              setMesaSeleccionada(mesa);
+                              setMesaDestinoSeleccionada(null);
+                              setModalCambiarMesa(true);
+                            }}
+                            className="py-1.5 px-2 rounded-lg bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/50 dark:hover:bg-slate-800 text-[10.5px] font-bold text-slate-600 dark:text-slate-300 transition-all flex items-center justify-center gap-1 cursor-pointer active:scale-95 border border-slate-200/60 dark:border-slate-700/60"
+                            title="Cambiar comanda a otra mesa"
                           >
-                            <Receipt className="w-3.5 h-3.5" />
-                            <span>Cobrar</span>
+                            <ArrowRightLeft className="w-3 h-3 text-sky-500" />
+                            <span>Cambiar</span>
                           </button>
-                        ) : (
                           <button
                             type="button"
-                            onClick={() => pedirPrecuenta(mesa.id)}
-                            className="py-2 px-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white text-xs font-bold transition-all shadow-md shadow-amber-500/20 flex items-center justify-center gap-1 cursor-pointer active:scale-95 font-sora"
+                            onClick={() => {
+                              setMesaSeleccionada(mesa);
+                              setMesasParaUnir([]);
+                              setModalUnirMesas(true);
+                            }}
+                            className="py-1.5 px-2 rounded-lg bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/50 dark:hover:bg-slate-800 text-[10.5px] font-bold text-slate-600 dark:text-slate-300 transition-all flex items-center justify-center gap-1 cursor-pointer active:scale-95 border border-slate-200/60 dark:border-slate-700/60"
+                            title="Unir otras mesas a esta cuenta"
                           >
-                            <Receipt className="w-3.5 h-3.5" />
-                            <span>Pre-cuenta</span>
+                            <GitMerge className="w-3 h-3 text-purple-500" />
+                            <span>Unir</span>
                           </button>
-                        )}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -873,13 +1316,15 @@ export default function Mesas() {
           )}
         </div>
       </div>
+      </>
+      )}
 
       {/* Modal Tomar Comanda / Agregar Platos */}
       {modalComanda && mesaSeleccionada && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-5xl w-full h-[88vh] flex flex-col overflow-hidden shadow-2xl animate-in fade-in zoom-in-95">
             {/* Modal Header */}
-            <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950">
+            <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950 flex-wrap gap-3">
               <div className="flex items-center gap-3">
                 <span className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center">
                   <UtensilsCrossed className="w-5 h-5" />
@@ -889,13 +1334,54 @@ export default function Mesas() {
                     Comanda para {mesaSeleccionada.name} ({mesaSeleccionada.areaNombre})
                   </h2>
                   <p className="text-xs text-slate-400">
-                    Seleccione los platos, agregue notas especiales y envíe directamente a cocina.
+                    Seleccione los platos, agregue modificadores de cocina y envíe directamente al monitor KDS.
                   </p>
                 </div>
               </div>
+
+              {/* Selector de Canal de Venta: Salón vs Llevar vs Delivery */}
+              <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 p-1 rounded-xl">
+                <button
+                  type="button"
+                  onClick={() => setCanalComanda('salon')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                    canalComanda === 'salon'
+                      ? 'bg-amber-600 text-white shadow-xs'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <UtensilsCrossed className="w-3.5 h-3.5" />
+                  <span>Salón</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCanalComanda('takeaway')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                    canalComanda === 'takeaway'
+                      ? 'bg-amber-600 text-white shadow-xs'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <ShoppingBag className="w-3.5 h-3.5" />
+                  <span>Para Llevar</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCanalComanda('delivery')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                    canalComanda === 'delivery'
+                      ? 'bg-amber-600 text-white shadow-xs'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <Bike className="w-3.5 h-3.5" />
+                  <span>Delivery</span>
+                </button>
+              </div>
+
               <button
                 onClick={() => setModalComanda(false)}
-                className="text-slate-400 hover:text-white p-2 rounded-xl hover:bg-slate-800"
+                className="text-slate-400 hover:text-white p-2 rounded-xl hover:bg-slate-800 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1042,19 +1528,73 @@ export default function Mesas() {
                                 +
                               </button>
                             </div>
+                          </div>
 
-                            {/* Note input */}
-                            <input
-                              type="text"
-                              value={item.note || ''}
-                              onChange={(e) => {
-                                const updated = [...itemsComanda];
-                                updated[idx].note = e.target.value;
-                                setItemsComanda(updated);
-                              }}
-                              placeholder="Nota: ej. sin cebolla"
-                              className="w-32 bg-slate-950 border border-slate-800 rounded px-2 py-0.5 text-[10px] text-slate-300 placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
-                            />
+                          {/* Modificadores de cocina y Nota */}
+                          <div className="pt-1.5 border-t border-slate-800/80 space-y-1">
+                            <div className="flex items-center gap-1.5">
+                              <input
+                                type="text"
+                                value={item.note || ''}
+                                onChange={(e) => {
+                                  const updated = [...itemsComanda];
+                                  updated[idx].note = e.target.value;
+                                  setItemsComanda(updated);
+                                }}
+                                placeholder="Nota de cocina (ej. sin sal, cremas aparte)..."
+                                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-[10px] text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
+                              />
+                              {item.note && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const updated = [...itemsComanda];
+                                    updated[idx].note = '';
+                                    setItemsComanda(updated);
+                                  }}
+                                  className="text-slate-500 hover:text-rose-400 p-0.5 rounded cursor-pointer shrink-0"
+                                  title="Borrar nota"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              )}
+                            </div>
+
+                            {/* Chips rápidos gastronómicos */}
+                            <div className="flex items-center gap-1 overflow-x-auto pb-0.5 no-scrollbar">
+                              {OBSERVACIONES_RAPIDAS.map((obs) => {
+                                const isSelected = item.note?.toLowerCase().includes(obs.toLowerCase());
+                                return (
+                                  <button
+                                    key={obs}
+                                    type="button"
+                                    onClick={() => {
+                                      const updated = [...itemsComanda];
+                                      if (isSelected) {
+                                        const clean = (updated[idx].note || '')
+                                          .replace(obs, '')
+                                          .replace(/,\s*,/g, ',')
+                                          .replace(/^,\s*|,\s*$/g, '')
+                                          .trim();
+                                        updated[idx].note = clean;
+                                      } else {
+                                        updated[idx].note = updated[idx].note
+                                          ? `${updated[idx].note}, ${obs}`
+                                          : obs;
+                                      }
+                                      setItemsComanda(updated);
+                                    }}
+                                    className={`px-1.5 py-0.5 rounded text-[9px] font-semibold whitespace-nowrap transition-all cursor-pointer border ${
+                                      isSelected
+                                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/50'
+                                        : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200 hover:border-slate-700'
+                                    }`}
+                                  >
+                                    {obs}
+                                  </button>
+                                );
+                              })}
+                            </div>
                           </div>
                         </div>
                       ))
@@ -1086,11 +1626,225 @@ export default function Mesas() {
         </div>
       )}
 
-      {/* Modal Cobrar Cuenta */}
+      {/* Modal Cambiar Mesa */}
+      {modalCambiarMesa && mesaSeleccionada && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 select-none">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <h2 className="text-base font-black text-slate-800 dark:text-white flex items-center gap-2 font-sora">
+                <ArrowRightLeft className="w-5 h-5 text-sky-500" />
+                Cambiar Mesa: {mesaSeleccionada.name}
+              </h2>
+              <button
+                type="button"
+                onClick={() => setModalCambiarMesa(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-xl"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Resumen mesa actual */}
+            <div className="p-3.5 rounded-2xl bg-sky-50 dark:bg-sky-950/40 border border-sky-200/80 dark:border-sky-800/60 text-xs">
+              <div className="flex justify-between items-center font-bold text-sky-900 dark:text-sky-200">
+                <span>Mesa actual: {mesaSeleccionada.name} ({mesaSeleccionada.areaNombre})</span>
+                <span className="font-mono text-sm font-black text-sky-700 dark:text-sky-300">
+                  S/ {parseFloat(mesaSeleccionada.ordenes?.[0]?.total || 0).toFixed(2)}
+                </span>
+              </div>
+              <p className="text-[11px] text-sky-700/80 dark:text-sky-300/80 mt-1">
+                La orden completa ({mesaSeleccionada.ordenes?.[0]?.detalles?.length || 0} platos activos) se moverá a la nueva mesa y esta mesa quedará libre.
+              </p>
+            </div>
+
+            {/* Selector de mesa destino */}
+            <div>
+              <label className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider block mb-2">
+                Seleccione Mesa Destino (Libres)
+              </label>
+              <div className="max-h-48 overflow-y-auto grid grid-cols-3 gap-2 pr-1">
+                {areas
+                  .flatMap(a => (a.mesas || []).map(m => ({ ...m, areaNombre: a.name })))
+                  .filter(m => m.status === 'available' && m.id !== mesaSeleccionada.id)
+                  .map(m => {
+                    const isSelected = mesaDestinoSeleccionada?.id === m.id;
+                    return (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => setMesaDestinoSeleccionada(m)}
+                        className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer font-sora ${
+                          isSelected
+                            ? 'bg-sky-600 text-white border-sky-600 shadow-md shadow-sky-600/30'
+                            : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:border-sky-400'
+                        }`}
+                      >
+                        <div className="font-black text-xs">{m.name}</div>
+                        <div className="text-[9px] opacity-75 truncate">{m.areaNombre}</div>
+                      </button>
+                    );
+                  })}
+              </div>
+              {areas.flatMap(a => a.mesas || []).filter(m => m.status === 'available' && m.id !== mesaSeleccionada.id).length === 0 && (
+                <p className="text-xs text-rose-500 py-3 text-center">No hay otras mesas libres en este momento.</p>
+              )}
+            </div>
+
+            {/* Motivo */}
+            <div>
+              <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400 block mb-1">
+                Motivo de Cambio (Opcional)
+              </label>
+              <input
+                type="text"
+                value={motivoCambioMesa}
+                onChange={(e) => setMotivoCambioMesa(e.target.value)}
+                placeholder="Ej. Solicitado por comensal / Terraza"
+                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-800 dark:text-slate-100 outline-none focus:border-sky-500"
+              />
+            </div>
+
+            {/* Acciones */}
+            <div className="flex gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setModalCambiarMesa(false)}
+                className="flex-1 py-2.5 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-bold hover:bg-slate-200 transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={ejecutarCambiarMesa}
+                disabled={!mesaDestinoSeleccionada || procesandoCambioMesa}
+                className="flex-[2] py-2.5 rounded-2xl bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-500 hover:to-blue-500 text-white text-xs font-black shadow-lg shadow-sky-600/30 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40"
+              >
+                {procesandoCambioMesa ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <ArrowRightLeft className="w-4 h-4" />
+                )}
+                <span>Confirmar Transferencia</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Unir Mesas */}
+      {modalUnirMesas && mesaSeleccionada && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 select-none">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <h2 className="text-base font-black text-slate-800 dark:text-white flex items-center gap-2 font-sora">
+                <GitMerge className="w-5 h-5 text-purple-500" />
+                Unir Mesas con {mesaSeleccionada.name}
+              </h2>
+              <button
+                type="button"
+                onClick={() => setModalUnirMesas(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-xl"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-purple-50 dark:bg-purple-950/40 border border-purple-200/80 dark:border-purple-800/60 text-xs text-purple-900 dark:text-purple-300">
+              <p className="font-semibold">
+                Mesa Principal receptora: <strong>{mesaSeleccionada.name}</strong> ({mesaSeleccionada.areaNombre}).
+              </p>
+              <p className="text-[11px] text-purple-700/80 dark:text-purple-300/80 mt-1">
+                Los platos y consumos de las mesas secundarias se fusionarán en esta cuenta. Las mesas secundarias quedarán automáticamente liberadas.
+              </p>
+            </div>
+
+            {/* Listado de mesas a unir */}
+            <div>
+              <label className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider block mb-2">
+                Seleccione Mesas Secundarias a Fusionar
+              </label>
+              <div className="max-h-52 overflow-y-auto space-y-1.5 pr-1">
+                {areas
+                  .flatMap(a => (a.mesas || []).map(m => ({ ...m, areaNombre: a.name })))
+                  .filter(m => (m.status === 'occupied' || m.status === 'billed') && m.id !== mesaSeleccionada.id)
+                  .map(m => {
+                    const isChecked = mesasParaUnir.includes(m.id);
+                    const consumo = m.ordenes?.[0]?.total || 0;
+                    return (
+                      <div
+                        key={m.id}
+                        onClick={() => {
+                          if (isChecked) {
+                            setMesasParaUnir(mesasParaUnir.filter(id => id !== m.id));
+                          } else {
+                            setMesasParaUnir([...mesasParaUnir, m.id]);
+                          }
+                        }}
+                        className={`p-2.5 rounded-xl border flex items-center justify-between transition-all cursor-pointer ${
+                          isChecked
+                            ? 'bg-purple-50 dark:bg-purple-950/40 border-purple-500 ring-1 ring-purple-500/20'
+                            : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 hover:border-purple-300'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          {isChecked ? (
+                            <CheckSquare className="w-4 h-4 text-purple-600" />
+                          ) : (
+                            <Square className="w-4 h-4 text-slate-400" />
+                          )}
+                          <div>
+                            <div className="font-bold text-xs text-slate-800 dark:text-slate-100 font-sora">
+                              {m.name} ({m.areaNombre})
+                            </div>
+                            <div className="text-[10px] text-slate-400">
+                              {m.ordenes?.[0]?.detalles?.length || 0} platos activos
+                            </div>
+                          </div>
+                        </div>
+                        <span className="font-mono text-xs font-black text-purple-600 dark:text-purple-400">
+                          S/ {parseFloat(consumo).toFixed(2)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                {areas.flatMap(a => a.mesas || []).filter(m => (m.status === 'occupied' || m.status === 'billed') && m.id !== mesaSeleccionada.id).length === 0 && (
+                  <p className="text-xs text-slate-400 py-4 text-center">No hay otras mesas ocupadas para unir.</p>
+                )}
+              </div>
+            </div>
+
+            {/* Acciones */}
+            <div className="flex gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setModalUnirMesas(false)}
+                className="flex-1 py-2.5 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-bold hover:bg-slate-200 transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={ejecutarUnirMesas}
+                disabled={mesasParaUnir.length === 0 || procesandoUnirMesas}
+                className="flex-[2] py-2.5 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-black shadow-lg shadow-purple-600/30 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40"
+              >
+                {procesandoUnirMesas ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <GitMerge className="w-4 h-4" />
+                )}
+                <span>Unificar {mesasParaUnir.length} {mesasParaUnir.length === 1 ? 'Mesa' : 'Mesas'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Cobrar Cuenta & Split Bill */}
       {modalCobrar && mesaSeleccionada && (
         <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto select-none">
           <form
-            onSubmit={ejecutarCobro}
+            onSubmit={modoDividirCuenta ? ejecutarCobroSeparado : ejecutarCobro}
             className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-lg w-full p-6 space-y-4 shadow-2xl animate-in fade-in zoom-in-95 my-8"
           >
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
@@ -1107,20 +1861,167 @@ export default function Mesas() {
               </button>
             </div>
 
+            {/* Selector: Cobro Total vs Split Bill */}
+            <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-2xl border border-slate-200 dark:border-slate-700">
+              <button
+                type="button"
+                onClick={() => {
+                  setModoDividirCuenta(false);
+                  setItemsParaDividir({});
+                }}
+                className={`flex-1 py-1.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  !modoDividirCuenta
+                    ? 'bg-white dark:bg-slate-900 text-slate-800 dark:text-white shadow-xs font-sora'
+                    : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'
+                }`}
+              >
+                <Receipt className="w-3.5 h-3.5 text-amber-500" />
+                <span>Cobro Total de Mesa</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setModoDividirCuenta(true)}
+                className={`flex-1 py-1.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  modoDividirCuenta
+                    ? 'bg-amber-600 text-white shadow-xs font-sora'
+                    : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'
+                }`}
+              >
+                <Split className="w-3.5 h-3.5" />
+                <span>Dividir Cuenta (Split Bill)</span>
+              </button>
+            </div>
+
+            {/* Selector de Platos para Cuenta Separada */}
+            {modoDividirCuenta && (() => {
+              const ordenActiva = mesaSeleccionada.ordenes && mesaSeleccionada.ordenes.length > 0 ? mesaSeleccionada.ordenes[0] : null;
+              const totalSeparado = ordenActiva?.detalles?.reduce((acc, d) => {
+                const cant = itemsParaDividir[d.id] || 0;
+                return acc + (cant * parseFloat(d.unit_price || 0));
+              }, 0) || 0;
+
+              return (
+                <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 space-y-2.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-amber-900 dark:text-amber-300 flex items-center gap-1.5 font-sora">
+                      <Split className="w-3.5 h-3.5 text-amber-600" />
+                      Selecciona platos para esta sub-cuenta:
+                    </span>
+                    <span className="font-mono text-xs font-black text-amber-600 dark:text-amber-400">
+                      S/ {totalSeparado.toFixed(2)}
+                    </span>
+                  </div>
+
+                  <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1">
+                    {ordenActiva?.detalles?.map((det) => {
+                      const cantSeleccionada = itemsParaDividir[det.id] || 0;
+                      const maxCant = det.quantity;
+                      const isChecked = cantSeleccionada > 0;
+                      const subdet = cantSeleccionada * parseFloat(det.unit_price || 0);
+
+                      return (
+                        <div
+                          key={det.id}
+                          className={`p-2 rounded-xl border flex items-center justify-between text-xs transition-all ${
+                            isChecked
+                              ? 'bg-white dark:bg-slate-900 border-amber-500 ring-1 ring-amber-500/20'
+                              : 'bg-white/70 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700/60'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setItemsParaDividir(prev => ({
+                                  ...prev,
+                                  [det.id]: prev[det.id] ? 0 : maxCant
+                                }));
+                              }}
+                              className="cursor-pointer"
+                            >
+                              {isChecked ? (
+                                <CheckSquare className="w-4 h-4 text-amber-600" />
+                              ) : (
+                                <Square className="w-4 h-4 text-slate-400" />
+                              )}
+                            </button>
+                            <div>
+                              <span className="font-bold text-slate-800 dark:text-slate-100 block">
+                                {det.producto?.name || det.name || 'Plato'}
+                              </span>
+                              <span className="text-[10px] text-slate-400 font-mono">
+                                S/ {parseFloat(det.unit_price).toFixed(2)} c/u (Total: {maxCant})
+                              </span>
+                            </div>
+                          </div>
+
+                          {isChecked && (
+                            <div className="flex items-center gap-2">
+                              <div className="flex items-center bg-slate-100 dark:bg-slate-800 rounded-lg px-1.5 py-0.5 border border-slate-200 dark:border-slate-700">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (cantSeleccionada > 1) {
+                                      setItemsParaDividir(prev => ({ ...prev, [det.id]: cantSeleccionada - 1 }));
+                                    } else {
+                                      setItemsParaDividir(prev => {
+                                        const copy = { ...prev };
+                                        delete copy[det.id];
+                                        return copy;
+                                      });
+                                    }
+                                  }}
+                                  className="font-bold text-slate-600 dark:text-slate-200 px-1 hover:text-amber-500"
+                                >
+                                  -
+                                </button>
+                                <span className="px-1 text-xs font-black font-mono">{cantSeleccionada}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (cantSeleccionada < maxCant) {
+                                      setItemsParaDividir(prev => ({ ...prev, [det.id]: cantSeleccionada + 1 }));
+                                    }
+                                  }}
+                                  className="font-bold text-slate-600 dark:text-slate-200 px-1 hover:text-amber-500"
+                                >
+                                  +
+                                </button>
+                              </div>
+                              <span className="font-mono text-xs font-black text-amber-600 dark:text-amber-400 min-w-12 text-right">
+                                S/ {subdet.toFixed(2)}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* Total Banner */}
             {(() => {
               const ordenActiva = mesaSeleccionada.ordenes && mesaSeleccionada.ordenes.length > 0 ? mesaSeleccionada.ordenes[0] : null;
-              const subtotal = ordenActiva ? parseFloat(ordenActiva.subtotal) : 0;
-              const totalPagar = subtotal - (parseFloat(datosCobro.discount) || 0) + (parseFloat(datosCobro.tip) || 0);
+              const subtotalBase = modoDividirCuenta
+                ? (ordenActiva?.detalles?.reduce((acc, d) => {
+                    const cant = itemsParaDividir[d.id] || 0;
+                    return acc + (cant * parseFloat(d.unit_price || 0));
+                  }, 0) || 0)
+                : (ordenActiva ? parseFloat(ordenActiva.subtotal) : 0);
+              const totalPagar = Math.max(0, subtotalBase - (parseFloat(datosCobro.discount) || 0) + (parseFloat(datosCobro.tip) || 0));
 
               return (
                 <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-600 to-orange-600 text-white flex items-center justify-between shadow-lg shadow-amber-500/25">
                   <div>
-                    <span className="text-[11px] font-bold text-amber-100 uppercase tracking-wider block">Consumo en Mesa</span>
+                    <span className="text-[11px] font-bold text-amber-100 uppercase tracking-wider block">
+                      {modoDividirCuenta ? 'Sub-Cuenta a Cobrar' : 'Consumo en Mesa'}
+                    </span>
                     <span className="text-2xl font-black">S/ {totalPagar.toFixed(2)}</span>
                   </div>
                   <div className="text-right text-xs">
-                    <span className="text-amber-100 block">Subtotal: S/ {subtotal.toFixed(2)}</span>
+                    <span className="text-amber-100 block">Subtotal: S/ {subtotalBase.toFixed(2)}</span>
                     <span className="text-amber-200 text-[11px]">IGV 18% incluido</span>
                   </div>
                 </div>
@@ -1220,8 +2121,13 @@ export default function Mesas() {
             {/* Billetes Sugeridos & Vuelto para Efectivo */}
             {(() => {
               const ordenActiva = mesaSeleccionada.ordenes && mesaSeleccionada.ordenes.length > 0 ? mesaSeleccionada.ordenes[0] : null;
-              const subtotal = ordenActiva ? parseFloat(ordenActiva.subtotal) : 0;
-              const totalPagar = subtotal - (parseFloat(datosCobro.discount) || 0) + (parseFloat(datosCobro.tip) || 0);
+              const subtotalBase = modoDividirCuenta
+                ? (ordenActiva?.detalles?.reduce((acc, d) => {
+                    const cant = itemsParaDividir[d.id] || 0;
+                    return acc + (cant * parseFloat(d.unit_price || 0));
+                  }, 0) || 0)
+                : (ordenActiva ? parseFloat(ordenActiva.subtotal) : 0);
+              const totalPagar = Math.max(0, subtotalBase - (parseFloat(datosCobro.discount) || 0) + (parseFloat(datosCobro.tip) || 0));
               const recibido = parseFloat(datosCobro.received_amount) || totalPagar;
               const vuelto = Math.max(0, recibido - totalPagar);
 
@@ -1351,7 +2257,7 @@ export default function Mesas() {
               </button>
               <button
                 type="submit"
-                disabled={procesandoCobro}
+                disabled={procesandoCobro || (modoDividirCuenta && Object.values(itemsParaDividir).reduce((a, b) => a + b, 0) === 0)}
                 className="flex-[2] py-2.5 rounded-2xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white text-xs font-black shadow-lg shadow-amber-600/30 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
               >
                 {procesandoCobro ? (
@@ -1362,7 +2268,7 @@ export default function Mesas() {
                 ) : (
                   <>
                     <CheckCircle className="w-4 h-4" />
-                    <span>Confirmar y Emitir Comprobante</span>
+                    <span>{modoDividirCuenta ? 'Cobrar Sub-Cuenta' : 'Confirmar y Emitir Comprobante'}</span>
                   </>
                 )}
               </button>

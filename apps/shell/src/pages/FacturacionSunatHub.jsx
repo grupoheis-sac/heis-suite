@@ -265,17 +265,23 @@ export default function FacturacionSunatHub() {
       const res = await api.get(`/core/facturacion/comprobantes/${id}/${tipo}`, {
         responseType: 'blob',
       });
-      const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/xml' }));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `${tipo === 'cdr' ? 'R-' : ''}${numeroFormato}.xml`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-      toast.success(`Archivo ${tipo.toUpperCase()} descargado`);
+      const mime = tipo === 'pdf' ? 'application/pdf' : 'application/xml';
+      const extension = tipo === 'pdf' ? 'pdf' : 'xml';
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: mime }));
+      if (tipo === 'pdf') {
+        window.open(url, '_blank');
+      } else {
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', `${tipo === 'cdr' ? 'R-' : ''}${numeroFormato}.${extension}`);
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      }
+      setTimeout(() => window.URL.revokeObjectURL(url), 10000);
+      toast.success(`Archivo ${tipo.toUpperCase()} listo`);
     } catch (error) {
-      toast.error(`No se pudo descargar el ${tipo.toUpperCase()}`);
+      toast.error(`No se pudo obtener el ${tipo.toUpperCase()}`);
     } finally {
       setProcesandoId(null);
     }
@@ -623,6 +629,16 @@ export default function FacturacionSunatHub() {
                     </td>
                     <td className="py-3 px-4 text-right">
                       <div className="inline-flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          disabled={Boolean(procesandoId)}
+                          onClick={() => handleDescargarArchivo(c.id, 'pdf', c.numero_formato)}
+                          className="px-2.5 py-1 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-[11px] font-bold text-rose-600 dark:text-rose-400 flex items-center gap-1 cursor-pointer disabled:opacity-40"
+                          title="Visualizar o Descargar PDF Oficial A4 con QR y Hash"
+                        >
+                          <FileText className="w-3.5 h-3.5" />
+                          <span>PDF</span>
+                        </button>
                         <button
                           type="button"
                           disabled={Boolean(procesandoId)}

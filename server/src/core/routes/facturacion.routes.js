@@ -8,6 +8,7 @@ import {
   comunicarBaja,
   descargarXmlComprobante,
   descargarCdrComprobante,
+  descargarPdfComprobante,
 } from '../controllers/facturacion.controller.js';
 import {
   obtenerResumenContableMes,
@@ -28,6 +29,7 @@ router.post('/comprobantes/:id/nota-credito', emitirNotaCredito);
 router.post('/comprobantes/:id/comunicar-baja', comunicarBaja);
 router.get('/comprobantes/:id/xml', descargarXmlComprobante);
 router.get('/comprobantes/:id/cdr', descargarCdrComprobante);
+router.get('/comprobantes/:id/pdf', descargarPdfComprobante);
 
 // Libros Contables y Exportaciones Tributarias SUNAT (14.1, 13.1, PLE y Arqueos)
 router.get('/reportes/resumen-mes', obtenerResumenContableMes);

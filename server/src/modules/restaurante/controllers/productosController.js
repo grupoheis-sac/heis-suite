@@ -54,7 +54,20 @@ export const getCategorias = async (req, res, next) => {
 
 export const crearProducto = async (req, res, next) => {
   try {
-    const { category_id, name, price, cost = 0, stock = 999, destination = 'kitchen', barcode, description, image } = req.body;
+    const {
+      category_id,
+      name,
+      price,
+      cost = 0,
+      stock = 999,
+      destination = 'kitchen',
+      barcode,
+      description,
+      image,
+      price_takeaway,
+      price_delivery,
+      recipe_summary
+    } = req.body;
     const prod = await Producto.create({
       empresa_id: req.empresa_id,
       category_id,
@@ -66,6 +79,9 @@ export const crearProducto = async (req, res, next) => {
       destination,
       barcode,
       image,
+      price_takeaway: price_takeaway ? Number(price_takeaway) : null,
+      price_delivery: price_delivery ? Number(price_delivery) : null,
+      recipe_summary,
       is_active: true,
     });
 

@@ -1,9 +1,13 @@
 import crypto from 'node:crypto';
 import sequelize from '../../config/db.js';
 import { ComprobanteElectronico, Empresa, Sucursal } from '../models/index.js';
+import cpeService from './sunat/cpeService.js';
+
+const SUNAT_API_URL = process.env.SUNAT_API_URL || 'http://localhost:3080';
+const SUNAT_API_KEY = process.env.SUNAT_API_KEY || 'heis_sunat_secret_key_2026';
 
 /**
- * Escapa caracteres reservados XML para evitar rechazo de esquema UBL 2.1 e inyección XML
+ * Escapa caracteres reservados XML para evitar inyecciones o problemas de formato
  */
 export function escapeXml(unsafe) {
   if (unsafe === null || unsafe === undefined) return '';
@@ -25,7 +29,7 @@ export function roundMoney(num, decimals = 2) {
 }
 
 /**
- * Valida reglas obligatorias de SUNAT antes de construir el XML UBL 2.1
+ * Valida reglas obligatorias de SUNAT antes de enviar al microservicio
  */
 export function validarReglasSunat({ tipoComprobante, serie, cliente, total, items }) {
   if (!Array.isArray(items) || items.length === 0) {
@@ -81,7 +85,7 @@ export function calcularTotalesUbl(items, igvPorcentaje = 18) {
 
     if (afectacion === '10') {
       // Operación Gravada - Onerosa
-      valorUnitarioSinIgv = roundMoney(precioConIgv / (1 + tasa), 6); // Hasta 6 decimales en Valor Unitario UBL
+      valorUnitarioSinIgv = roundMoney(precioConIgv / (1 + tasa), 6);
       valorVentaLinea = roundMoney(totalLinea / (1 + tasa), 2);
       igvLinea = roundMoney(totalLinea - valorVentaLinea, 2);
       opGravadas = roundMoney(opGravadas + valorVentaLinea, 2);
@@ -158,169 +162,36 @@ export async function obtenerSiguienteCorrelativo({ empresaId, sucursalId, tipoC
 export function detectarTipoDocumentoCliente(documento, tipoComprobante) {
   const limpio = String(documento || '').trim();
   if (tipoComprobante === 'Factura' || limpio.length === 11) {
-    return { codigo: '6', numero: limpio || '20000000001' };
+    return { codigo: '6', texto: 'RUC', numero: limpio || '20000000001' };
   }
   if (limpio.length === 8) {
-    return { codigo: '1', numero: limpio };
+    return { codigo: '1', texto: 'DNI', numero: limpio };
   }
   if (limpio.length > 8) {
-    return { codigo: '4', numero: limpio };
+    return { codigo: '4', texto: 'CE', numero: limpio };
   }
-  return { codigo: '0', numero: '00000000' };
+  return { codigo: '0', texto: '-', numero: '00000000' };
 }
 
-export function construirXmlUbl21({
-  emisor,
-  cliente,
-  comprobante,
-  items,
-}) {
-  const fechaIso = new Date(comprobante.fecha_emision).toISOString();
-  const fechaDia = fechaIso.slice(0, 10);
-  const horaEmision = fechaIso.slice(11, 19);
-  const rootTag = comprobante.tipo_documento_codigo === '07' ? 'CreditNote' : 'Invoice';
-  const lineTag = comprobante.tipo_documento_codigo === '07' ? 'cac:CreditNoteLine' : 'cac:InvoiceLine';
-  const qtyTag = comprobante.tipo_documento_codigo === '07' ? 'cbc:CreditedQuantity' : 'cbc:InvoicedQuantity';
+/**
+ * Envía el comprobante electrónico al microservicio local api-sunat-cpe (Puerto 3080)
+ */
+async function emitirEnMicroservicioSunat(payload) {
+  const res = await fetch(`${SUNAT_API_URL}/api/v1/cpe/emitir`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': SUNAT_API_KEY,
+    },
+    body: JSON.stringify(payload),
+  });
 
-  const lineasXml = items.map((item, idx) => {
-    const cantidad = Number(item.cantidad || 1);
-    const precioConIgv = Number(item.precio_referencia || item.precio_unitario || 0);
-    const valorUnitarioSinIgv = Number(item.valor_unitario || (precioConIgv / 1.18).toFixed(6));
-    const valorVentaLinea = Number(item.valor_venta_linea || (cantidad * valorUnitarioSinIgv).toFixed(2));
-    const igvLinea = Number(item.igv_linea || (item.total_linea - valorVentaLinea).toFixed(2));
-    const unidad = item.unidad_medida || 'NIU';
-
-    return `
-  <${lineTag}>
-    <cbc:ID>${idx + 1}</cbc:ID>
-    <${qtyTag} unitCode="${escapeXml(unidad)}">${cantidad.toFixed(2)}</${qtyTag}>
-    <cbc:LineExtensionAmount currencyID="${comprobante.moneda}">${valorVentaLinea.toFixed(2)}</cbc:LineExtensionAmount>
-    <cac:PricingReference>
-      <cac:AlternativeConditionPrice>
-        <cbc:PriceAmount currencyID="${comprobante.moneda}">${precioConIgv.toFixed(2)}</cbc:PriceAmount>
-        <cbc:PriceTypeCode>01</cbc:PriceTypeCode>
-      </cac:AlternativeConditionPrice>
-    </cac:PricingReference>
-    <cac:TaxTotal>
-      <cbc:TaxAmount currencyID="${comprobante.moneda}">${igvLinea.toFixed(2)}</cbc:TaxAmount>
-      <cac:TaxSubtotal>
-        <cbc:TaxableAmount currencyID="${comprobante.moneda}">${valorVentaLinea.toFixed(2)}</cbc:TaxableAmount>
-        <cbc:TaxAmount currencyID="${comprobante.moneda}">${igvLinea.toFixed(2)}</cbc:TaxAmount>
-        <cac:TaxCategory>
-          <cbc:Percent>18.00</cbc:Percent>
-          <cbc:TaxExemptionReasonCode>${item.tipo_afectacion_igv || '10'}</cbc:TaxExemptionReasonCode>
-          <cac:TaxScheme>
-            <cbc:ID>1000</cbc:ID>
-            <cbc:Name>IGV</cbc:Name>
-            <cbc:TaxTypeCode>VAT</cbc:TaxTypeCode>
-          </cac:TaxScheme>
-        </cac:TaxCategory>
-      </cac:TaxSubtotal>
-    </cac:TaxTotal>
-    <cac:Item>
-      <cbc:Description>${escapeXml(item.descripcion || item.nombre || 'PRODUCTO / SERVICIO')}</cbc:Description>
-    </cac:Item>
-    <cac:Price>
-      <cbc:PriceAmount currencyID="${comprobante.moneda}">${valorUnitarioSinIgv.toFixed(6)}</cbc:PriceAmount>
-    </cac:Price>
-  </${lineTag}>`;
-  }).join('\n');
-
-  const xmlBase = `<?xml version="1.0" encoding="UTF-8"?>
-<${rootTag} xmlns="urn:oasis:names:specification:ubl:schema:xsd:${rootTag}-2"
-         xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2"
-         xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"
-         xmlns:ds="http://www.w3.org/2000/09/xmldsig#"
-         xmlns:ext="urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2">
-  <ext:UBLExtensions>
-    <ext:UBLExtension>
-      <ext:ExtensionContent>
-        <ds:Signature Id="SignHEISSuite"/>
-      </ext:ExtensionContent>
-    </ext:UBLExtension>
-  </ext:UBLExtensions>
-  <cbc:UBLVersionID>2.1</cbc:UBLVersionID>
-  <cbc:CustomizationID>2.0</cbc:CustomizationID>
-  <cbc:ID>${escapeXml(comprobante.numero_formato)}</cbc:ID>
-  <cbc:IssueDate>${fechaDia}</cbc:IssueDate>
-  <cbc:IssueTime>${horaEmision}</cbc:IssueTime>
-  ${comprobante.tipo_documento_codigo !== '07' ? `<cbc:InvoiceTypeCode listID="0101">${comprobante.tipo_documento_codigo}</cbc:InvoiceTypeCode>` : ''}
-  <cbc:DocumentCurrencyCode>${comprobante.moneda}</cbc:DocumentCurrencyCode>
-  <cac:AccountingSupplierParty>
-    <cac:Party>
-      <cac:PartyIdentification>
-        <cbc:ID schemeID="6">${escapeXml(emisor.ruc)}</cbc:ID>
-      </cac:PartyIdentification>
-      <cac:PartyName>
-        <cbc:Name>${escapeXml(emisor.nombre)}</cbc:Name>
-      </cac:PartyName>
-      <cac:PartyLegalEntity>
-        <cbc:RegistrationName>${escapeXml(emisor.nombre)}</cbc:RegistrationName>
-        <cac:RegistrationAddress>
-          <cbc:AddressTypeCode>0000</cbc:AddressTypeCode>
-          <cac:AddressLine>
-            <cbc:Line>${escapeXml(emisor.direccion || 'PERU')}</cbc:Line>
-          </cac:AddressLine>
-        </cac:RegistrationAddress>
-      </cac:PartyLegalEntity>
-    </cac:Party>
-  </cac:AccountingSupplierParty>
-  <cac:AccountingCustomerParty>
-    <cac:Party>
-      <cac:PartyIdentification>
-        <cbc:ID schemeID="${cliente.tipo_doc}">${escapeXml(cliente.num_doc)}</cbc:ID>
-      </cac:PartyIdentification>
-      <cac:PartyLegalEntity>
-        <cbc:RegistrationName>${escapeXml(cliente.razon_social)}</cbc:RegistrationName>
-      </cac:PartyLegalEntity>
-    </cac:Party>
-  </cac:AccountingCustomerParty>
-  <cac:TaxTotal>
-    <cbc:TaxAmount currencyID="${comprobante.moneda}">${Number(comprobante.igv).toFixed(2)}</cbc:TaxAmount>
-    <cac:TaxSubtotal>
-      <cbc:TaxableAmount currencyID="${comprobante.moneda}">${Number(comprobante.op_gravadas).toFixed(2)}</cbc:TaxableAmount>
-      <cbc:TaxAmount currencyID="${comprobante.moneda}">${Number(comprobante.igv).toFixed(2)}</cbc:TaxAmount>
-      <cac:TaxCategory>
-        <cac:TaxScheme>
-          <cbc:ID>1000</cbc:ID>
-          <cbc:Name>IGV</cbc:Name>
-          <cbc:TaxTypeCode>VAT</cbc:TaxTypeCode>
-        </cac:TaxScheme>
-      </cac:TaxCategory>
-    </cac:TaxSubtotal>
-  </cac:TaxTotal>
-  <cac:LegalMonetaryTotal>
-    <cbc:LineExtensionAmount currencyID="${comprobante.moneda}">${Number(comprobante.op_gravadas).toFixed(2)}</cbc:LineExtensionAmount>
-    <cbc:TaxInclusiveAmount currencyID="${comprobante.moneda}">${Number(comprobante.total).toFixed(2)}</cbc:TaxInclusiveAmount>
-    <cbc:PayableAmount currencyID="${comprobante.moneda}">${Number(comprobante.total).toFixed(2)}</cbc:PayableAmount>
-  </cac:LegalMonetaryTotal>
-  ${lineasXml}
-</${rootTag}>`;
-
-  const hashCpe = crypto.createHash('sha256').update(xmlBase, 'utf8').digest('base64');
-  const signatureBlock = `<ds:Signature Id="SignHEISSuite"><ds:SignedInfo><ds:Reference><ds:DigestValue>${hashCpe}</ds:DigestValue></ds:Reference></ds:SignedInfo></ds:Signature>`;
-  const xmlFirmado = xmlBase.replace('<ds:Signature Id="SignHEISSuite"/>', signatureBlock);
-
-  const qrString = [
-    emisor.ruc,
-    comprobante.tipo_documento_codigo,
-    comprobante.serie,
-    String(comprobante.correlativo).padStart(8, '0'),
-    Number(comprobante.igv).toFixed(2),
-    Number(comprobante.total).toFixed(2),
-    fechaDia,
-    cliente.tipo_doc,
-    cliente.num_doc,
-    hashCpe,
-    '',
-  ].join('|');
-
-  return {
-    xmlFirmado,
-    hashCpe,
-    qrString,
-    fechaDia,
-  };
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const errorMsg = data?.error || `Error HTTP ${res.status} desde el microservicio SUNAT CPE`;
+    throw new Error(errorMsg);
+  }
+  return data;
 }
 
 export async function emitirComprobanteUniversal({
@@ -344,7 +215,7 @@ export async function emitirComprobanteUniversal({
   const t = transaction || (await sequelize.transaction());
 
   try {
-    const empresa = await Empresa.scope('withSunatSecrets').findByPk(empresaId, {
+    const empresa = await Empresa.findByPk(empresaId, {
       transaction: t,
       skipTenant: true,
     });
@@ -357,20 +228,25 @@ export async function emitirComprobanteUniversal({
       sucursal = await Sucursal.findByPk(sucursalId, { transaction: t });
     }
 
-    const rucEmisor = empresa.ruc && empresa.ruc.trim().length === 11 ? empresa.ruc.trim() : '20600000001';
+    const rucEmisor = empresa.ruc && empresa.ruc.trim().length === 11 ? empresa.ruc.trim() : '20608945123';
     const entorno = empresa.entorno_sunat || 'beta';
 
     let codigoDoc = '03';
     let prefijoSerie = 'B001';
+    let tipoCpeMicroservicio = 'Boleta';
+
     if (tipoComprobante === 'Factura') {
       codigoDoc = '01';
       prefijoSerie = 'F001';
+      tipoCpeMicroservicio = 'Factura';
     } else if (tipoComprobante === 'NotaCredito') {
       codigoDoc = '07';
       prefijoSerie = docReferenciaSerieNum?.startsWith('F') ? 'FC01' : 'BC01';
+      tipoCpeMicroservicio = 'Nota de Crédito';
     } else if (tipoComprobante === 'NotaDebito') {
       codigoDoc = '08';
       prefijoSerie = docReferenciaSerieNum?.startsWith('F') ? 'FD01' : 'BD01';
+      tipoCpeMicroservicio = 'Nota de Débito';
     }
 
     const serieFinal = (seriePreferida || prefijoSerie).toUpperCase();
@@ -394,7 +270,7 @@ export async function emitirComprobanteUniversal({
       items: calculoUbl.items,
     });
 
-    // Obtener siguiente correlativo serializado con bloqueo de fila
+    // Obtener siguiente correlativo serializado con bloqueo de fila pesimista
     const { correlativo, correlativoFormateado, numeracionCompleta } =
       await obtenerSiguienteCorrelativo(
         {
@@ -407,46 +283,92 @@ export async function emitirComprobanteUniversal({
       );
 
     const fechaEmision = new Date();
+    const fechaEmisionIso = fechaEmision.toISOString().split('T')[0];
+    const horaEmisionIso = fechaEmision.toTimeString().split(' ')[0];
 
-    const { xmlFirmado, hashCpe, qrString } = construirXmlUbl21({
+    // Payload para el microservicio api-sunat-cpe
+    const payloadSunat = {
+      tipoComprobante: tipoCpeMicroservicio,
+      serie: serieFinal,
+      correlativo: correlativo,
+      fechaEmision: fechaEmisionIso,
+      horaEmision: horaEmisionIso,
+      formaPago: 'Contado',
       emisor: {
         ruc: rucEmisor,
-        nombre: empresa.nombre,
-        direccion: sucursal?.direccion || empresa.direccion || 'PERU',
+        razonSocial: empresa.nombre || 'EMPRESA HEIS S.A.C.',
+        nombreComercial: empresa.nombre || 'EMPRESA HEIS',
+        direccion: sucursal?.direccion || empresa.direccion || 'LIMA - PERU',
+        ubigeo: '150101',
+        departamento: 'LIMA',
+        provincia: 'LIMA',
+        distrito: 'LIMA',
       },
       cliente: {
-        tipo_doc: docCliente.codigo,
-        num_doc: docCliente.numero,
-        razon_social: clienteNombre || 'CLIENTE VARIOS',
+        tipoDocumento: docCliente.texto,
+        numeroDocumento: docCliente.numero,
+        razonSocial: clienteNombre || 'CLIENTE VARIOS',
+        direccion: clienteDireccion || '',
       },
-      comprobante: {
-        tipo_documento_codigo: codigoDoc,
-        serie: serieFinal,
-        correlativo,
-        numero_formato: numeracionCompleta,
-        fecha_emision: fechaEmision,
-        moneda: 'PEN',
-        op_gravadas: calculoUbl.opGravadas,
+      items: calculoUbl.items.map((it) => ({
+        codigo: it.codigo_producto,
+        descripcion: it.descripcion_sanitizada || it.descripcion,
+        unidadMedida: it.unidad_medida || 'NIU',
+        cantidad: it.cantidad,
+        precioUnitario: it.precio_unitario,
+        valorUnitario: it.valor_unitario,
+        subtotal: it.valor_venta_linea,
+        igv: it.igv_linea,
+        total: it.total_linea,
+      })),
+      totales: {
+        gravado: calculoUbl.opGravadas,
+        exonerado: calculoUbl.opExoneradas,
+        inafecto: calculoUbl.opInafectas,
         igv: calculoUbl.totalIgv,
         total: totalFinal,
       },
-      items: calculoUbl.items,
-    });
+      enviarASunat: true,
+      entorno: entorno,
+    };
 
-    const cdrXml = `<?xml version="1.0" encoding="UTF-8"?>
-<ar:ApplicationResponse xmlns:ar="urn:oasis:names:specification:ubl:schema:xsd:ApplicationResponse-2"
-                        xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2"
-                        xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2">
-  <cbc:ID>R-${rucEmisor}-${codigoDoc}-${numeracionCompleta}</cbc:ID>
-  <cbc:IssueDate>${fechaEmision.toISOString().slice(0, 10)}</cbc:IssueDate>
-  <cac:DocumentResponse>
-    <cac:Response>
-      <cbc:ReferenceID>${numeracionCompleta}</cbc:ReferenceID>
-      <cbc:ResponseCode>0</cbc:ResponseCode>
-      <cbc:Description>La ${tipoComprobante} numero ${numeracionCompleta}, ha sido aceptada (${entorno.toUpperCase()})</cbc:Description>
-    </cac:Response>
-  </cac:DocumentResponse>
-</ar:ApplicationResponse>`;
+    if (tipoComprobante === 'NotaCredito' && docReferenciaSerieNum) {
+      const partesRef = String(docReferenciaSerieNum).split('-');
+      payloadSunat.documentoModificado = {
+        tipoDocumento: docReferenciaSerieNum.startsWith('F') ? '01' : '03',
+        serie: partesRef[0] || 'B001',
+        correlativo: partesRef[1] || '00000001',
+        motivo: docReferenciaMotivo || 'Anulación de la operación',
+        codigoMotivo: '01',
+      };
+    }
+
+    let sunatEstado = 'ACEPTADO';
+    let sunatCodigoRespuesta = '0';
+    let sunatDescripcion = `La ${tipoComprobante} número ${numeracionCompleta}, ha sido emitida`;
+    let sunatHash = null;
+    let sunatQr = null;
+    let xmlFirmado = null;
+    let cdrRespuesta = null;
+
+    try {
+      // Emisión nativa integrada en memoria (CPE UBL 2.1 + Firma XAdES-BES + SOAP SUNAT)
+      const resSunat = await cpeService.emitirComprobante(payloadSunat);
+      if (resSunat) {
+        sunatEstado = resSunat.sunat_estado === 'Aceptado' ? 'ACEPTADO' : (resSunat.sunat_estado?.toUpperCase() || (resSunat.success ? 'ACEPTADO' : 'OBSERVADO'));
+        sunatCodigoRespuesta = String(resSunat.sunat_codigo_respuesta || '0');
+        sunatDescripcion = resSunat.sunat_cdr || `Emitido ante SUNAT (${sunatEstado})`;
+        sunatHash = resSunat.sunat_hash || null;
+        sunatQr = resSunat.sunat_qr || null;
+        xmlFirmado = resSunat.archivos?.xml_contenido || null;
+        cdrRespuesta = resSunat.archivos?.cdr_zip_base64 || null;
+      }
+    } catch (apiErr) {
+      console.warn(`[SUNAT] Advertencia en emisión SUNAT: ${apiErr.message}`);
+      // Contingencia: si SUNAT está fuera de servicio o error temporal, queda en PENDIENTE
+      sunatEstado = 'PENDIENTE';
+      sunatDescripcion = `Pendiente de sincronización SUNAT: ${apiErr.message}`;
+    }
 
     const registro = await ComprobanteElectronico.create({
       empresa_id: empresaId,
@@ -475,13 +397,13 @@ export async function emitirComprobanteUniversal({
       doc_referencia_serie_num: docReferenciaSerieNum,
       doc_referencia_motivo: docReferenciaMotivo,
       entorno_sunat: entorno,
-      sunat_estado: 'ACEPTADO',
-      sunat_codigo_respuesta: '0',
-      sunat_descripcion: `La ${tipoComprobante} número ${numeracionCompleta}, ha sido aceptada`,
-      sunat_hash: hashCpe,
-      sunat_qr: qrString,
+      sunat_estado: sunatEstado,
+      sunat_codigo_respuesta: sunatCodigoRespuesta,
+      sunat_descripcion: sunatDescripcion,
+      sunat_hash: sunatHash,
+      sunat_qr: sunatQr,
       xml_firmado: xmlFirmado,
-      cdr_respuesta: cdrXml,
+      cdr_respuesta: cdrRespuesta,
     }, { transaction: t });
 
     if (ownTransaction) {
@@ -504,6 +426,5 @@ export default {
   calcularTotalesUbl,
   obtenerSiguienteCorrelativo,
   detectarTipoDocumentoCliente,
-  construirXmlUbl21,
   emitirComprobanteUniversal,
 };

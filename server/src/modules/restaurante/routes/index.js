@@ -11,6 +11,8 @@ const router = Router();
 // ================= MESAS Y SALONES =================
 router.get('/mesas/areas', mesasController.getAreas);
 router.post('/mesas/areas', mesasController.crearArea);
+router.post('/mesas/cambiar-mesa', mesasController.cambiarMesa);
+router.post('/mesas/unir-mesas', mesasController.unirMesas);
 router.get('/mesas/:id', mesasController.getMesaDetalle);
 router.post('/mesas', mesasController.crearMesa);
 router.put('/mesas/:id', mesasController.actualizarMesa);
@@ -20,6 +22,8 @@ router.get('/ordenes', ordenesController.getHistorialOrdenes);
 router.post('/ordenes/agregar', ordenesController.agregarItemsAMesa);
 router.post('/ordenes/cocina', ordenesController.enviarACocina);
 router.post('/ordenes/pedir-cuenta', ordenesController.pedirCuenta);
+router.post('/ordenes/separar-cuenta', ordenesController.separarCuenta);
+router.post('/ordenes/anular-item', ordenesController.anularItem);
 router.post('/ordenes/cobrar', ordenesController.cobrarOrden);
 router.post('/ordenes/:id/emitir-sunat', ordenesController.emitirSunatOrden);
 router.post('/ordenes/:id/anular', ordenesController.anularOrden);

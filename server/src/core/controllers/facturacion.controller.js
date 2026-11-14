@@ -1,10 +1,13 @@
+import fs from 'fs';
+import path from 'path';
 import { Op } from 'sequelize';
 import sequelize from '../../config/db.js';
-import { ComprobanteElectronico, Usuario, Sucursal } from '../models/index.js';
+import { ComprobanteElectronico, Usuario, Sucursal, Empresa } from '../models/index.js';
 import {
   emitirComprobanteUniversal,
   obtenerSiguienteCorrelativo,
 } from '../services/sunatUbl.service.js';
+import pdfService from '../services/sunat/pdfService.js';
 import { registrarAuditoria } from '../middleware/auditoria.middleware.js';
 
 export { obtenerSiguienteCorrelativo };
@@ -329,9 +332,83 @@ export async function descargarCdrComprobante(req, res) {
       return res.status(404).json({ success: false, error: 'CDR no disponible para este comprobante' });
     }
 
+    if (cpe.cdr_respuesta.length > 50 && !cpe.cdr_respuesta.startsWith('<?xml')) {
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', `attachment; filename="R-${cpe.numero_formato}.zip"`);
+      return res.send(Buffer.from(cpe.cdr_respuesta, 'base64'));
+    }
+
     res.setHeader('Content-Type', 'application/xml; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="R-${cpe.numero_formato}.xml"`);
     return res.send(cpe.cdr_respuesta);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+}
+
+export async function descargarPdfComprobante(req, res) {
+  try {
+    const { id } = req.params;
+    const cpe = await ComprobanteElectronico.findOne({
+      where: { id, empresa_id: req.empresa_id },
+    });
+
+    if (!cpe) {
+      return res.status(404).json({ success: false, error: 'Comprobante no encontrado' });
+    }
+
+    const empresa = await Empresa.findByPk(req.empresa_id);
+    const ruc = empresa?.ruc || '20608945123';
+    const tipo = cpe.tipo_documento_codigo;
+    const nombrePdf = `${ruc}-${tipo}-${cpe.numero_formato}.pdf`;
+    const rutaPdf = path.resolve(process.cwd(), 'storage/pdf', nombrePdf);
+
+    if (fs.existsSync(rutaPdf)) {
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename="${cpe.numero_formato}.pdf"`);
+      return res.sendFile(rutaPdf);
+    }
+
+    // Si aún no está en disco físico, generarlo dinámicamente con el servicio oficial interno
+    const resultadoPdf = await pdfService.generarPdfComprobante({
+      tipoComprobante: cpe.tipo_comprobante,
+      serie: cpe.serie,
+      correlativo: cpe.correlativo,
+      fechaEmision: cpe.fecha_emision ? new Date(cpe.fecha_emision).toISOString().split('T')[0] : null,
+      emisor: {
+        ruc,
+        razonSocial: empresa?.nombre || 'EMPRESA HEIS S.A.C.',
+        nombreComercial: empresa?.nombre || 'EMPRESA HEIS',
+        direccion: empresa?.direccion || 'LIMA - PERU',
+      },
+      cliente: {
+        tipoDocumento: cpe.cliente_tipo_doc === '6' ? 'RUC' : cpe.cliente_tipo_doc === '1' ? 'DNI' : '-',
+        numeroDocumento: cpe.cliente_num_doc,
+        razonSocial: cpe.cliente_razon_social,
+        direccion: cpe.cliente_direccion,
+      },
+      items: (cpe.items_json || []).map((it) => ({
+        codigo: it.codigo_producto || it.codigo,
+        descripcion: it.descripcion_sanitizada || it.descripcion,
+        cantidad: it.cantidad,
+        precioUnitario: it.precio_unitario,
+        total: it.total_linea || it.total || it.subtotal,
+      })),
+      totales: {
+        gravado: cpe.op_gravadas,
+        exonerado: cpe.op_exoneradas,
+        inafecto: cpe.op_inafectas,
+        igv: cpe.igv,
+        total: cpe.total,
+      },
+      hash: cpe.sunat_hash || '',
+      cadenaQR: cpe.sunat_qr || '',
+      nombreArchivo: nombrePdf,
+    });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${cpe.numero_formato}.pdf"`);
+    return res.send(resultadoPdf.pdfBuffer);
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
@@ -344,5 +421,6 @@ export default {
   comunicarBaja,
   descargarXmlComprobante,
   descargarCdrComprobante,
+  descargarPdfComprobante,
   obtenerSiguienteCorrelativo,
 };

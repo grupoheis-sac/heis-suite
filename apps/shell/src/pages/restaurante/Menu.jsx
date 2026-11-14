@@ -47,7 +47,10 @@ export default function Menu() {
     cost: '',
     stock: '',
     destination: 'kitchen',
-    description: ''
+    description: '',
+    price_takeaway: '',
+    price_delivery: '',
+    recipe_summary: ''
   });
 
   const cargarDatos = async () => {
@@ -82,7 +85,10 @@ export default function Menu() {
       cost: '',
       stock: '',
       destination: 'kitchen',
-      description: ''
+      description: '',
+      price_takeaway: '',
+      price_delivery: '',
+      recipe_summary: ''
     });
     setModalAbierto(true);
   };
@@ -97,7 +103,10 @@ export default function Menu() {
       cost: prod.cost !== undefined && prod.cost !== null ? prod.cost.toString() : '',
       stock: prod.stock !== null && prod.stock !== undefined ? prod.stock.toString() : '',
       destination: prod.destination || 'kitchen',
-      description: prod.description || ''
+      description: prod.description || '',
+      price_takeaway: prod.price_takeaway !== undefined && prod.price_takeaway !== null ? prod.price_takeaway.toString() : '',
+      price_delivery: prod.price_delivery !== undefined && prod.price_delivery !== null ? prod.price_delivery.toString() : '',
+      recipe_summary: prod.recipe_summary || ''
     });
     setModalAbierto(true);
   };
@@ -119,7 +128,10 @@ export default function Menu() {
         cost: form.cost ? parseFloat(form.cost) : 0,
         stock: form.stock !== '' ? parseInt(form.stock, 10) : null,
         destination: form.destination,
-        description: form.description ? form.description.trim() : ''
+        description: form.description ? form.description.trim() : '',
+        price_takeaway: form.price_takeaway ? parseFloat(form.price_takeaway) : null,
+        price_delivery: form.price_delivery ? parseFloat(form.price_delivery) : null,
+        recipe_summary: form.recipe_summary ? form.recipe_summary.trim() : ''
       };
 
       if (productoEditando) {
@@ -992,7 +1004,7 @@ export default function Menu() {
             <div className="grid grid-cols-3 gap-3">
               <div>
                 <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300 block mb-1">
-                  Precio Venta (S/) *
+                  Precio Salón (S/) *
                 </label>
                 <input
                   type="number"
@@ -1033,6 +1045,43 @@ export default function Menu() {
                   placeholder="Ilimitado"
                   className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-800 dark:text-slate-100 font-semibold focus:outline-none focus:border-amber-500"
                 />
+              </div>
+            </div>
+
+            {/* Precios Diferenciados por Canal (Salón, Para Llevar, Delivery) */}
+            <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 space-y-2">
+              <span className="text-[10.5px] font-extrabold text-slate-500 uppercase tracking-wider block">
+                Precios Diferenciados por Canal (Opcional)
+              </span>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10.5px] font-bold text-slate-600 dark:text-slate-400 block mb-1">
+                    Para Llevar (S/)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="0"
+                    value={form.price_takeaway}
+                    onChange={(e) => setForm({ ...form, price_takeaway: e.target.value })}
+                    placeholder={form.price || "0.00"}
+                    className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-800 dark:text-slate-100 font-semibold focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10.5px] font-bold text-slate-600 dark:text-slate-400 block mb-1">
+                    Delivery (S/)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="0"
+                    value={form.price_delivery}
+                    onChange={(e) => setForm({ ...form, price_delivery: e.target.value })}
+                    placeholder={form.price || "0.00"}
+                    className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-800 dark:text-slate-100 font-semibold focus:outline-none focus:border-amber-500"
+                  />
+                </div>
               </div>
             </div>
 

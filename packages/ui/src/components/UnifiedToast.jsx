@@ -40,35 +40,32 @@ export function UnifiedToastItem({ t, isDark = false }) {
     switch (t.type) {
       case 'success':
         return {
-          icon: <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 stroke-[2.2]" />,
-          iconBg: 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500',
-          borderColor: isDark ? 'border-emerald-500/20' : 'border-emerald-500/30',
-          glow: 'shadow-emerald-500/5',
-          progressBar: 'bg-gradient-to-r from-emerald-400 to-[#02CBA9]',
+          icon: <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 stroke-[2.2]" />,
+          iconBg: 'bg-emerald-500/15 border-emerald-500/30 text-emerald-600 dark:text-emerald-400',
+          glow: 'shadow-emerald-500/10',
+          progressBar: 'bg-gradient-to-r from-emerald-500 to-[#02CBA9]',
         };
       case 'error':
         return {
-          icon: <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 stroke-[2.2]" />,
-          iconBg: 'bg-rose-500/10 border-rose-500/20 text-rose-500',
-          borderColor: isDark ? 'border-rose-500/20' : 'border-rose-500/30',
-          glow: 'shadow-rose-500/5',
+          icon: <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 stroke-[2.2]" />,
+          iconBg: 'bg-rose-500/15 border-rose-500/30 text-rose-600 dark:text-rose-400',
+          glow: 'shadow-rose-500/10',
           progressBar: 'bg-gradient-to-r from-rose-500 to-red-600',
         };
       case 'loading':
         return {
           icon: <Loader2 className="w-4 h-4 text-[#1CC0F9] shrink-0 animate-spin stroke-[2.2]" />,
-          iconBg: 'bg-[#1CC0F9]/10 border-[#1CC0F9]/20 text-[#1CC0F9]',
-          borderColor: isDark ? 'border-[#1CC0F9]/20' : 'border-[#1CC0F9]/30',
-          glow: 'shadow-[#1CC0F9]/5',
+          iconBg: 'bg-[#1CC0F9]/15 border-[#1CC0F9]/30 text-[#1CC0F9]',
+          glow: 'shadow-[#1CC0F9]/10',
           progressBar: 'bg-gradient-to-r from-[#1CC0F9] to-[#02CBA9]',
         };
+      case 'info':
       default:
         return {
-          icon: <Sparkles className="w-4 h-4 text-[#7D71EB] dark:text-[#1CC0F9] shrink-0 stroke-[2]" />,
-          iconBg: 'bg-[#7D71EB]/10 border-[#7D71EB]/20 text-[#7D71EB] dark:text-[#1CC0F9]',
-          borderColor: isDark ? 'border-[#7D71EB]/20' : 'border-[#7D71EB]/30',
-          glow: 'shadow-[#7D71EB]/5',
-          progressBar: 'bg-gradient-to-r from-[#7D71EB] to-[#1CC0F9]',
+          icon: <Info className="w-4 h-4 text-sky-600 dark:text-sky-400 shrink-0 stroke-[2.2]" />,
+          iconBg: 'bg-sky-500/15 border-sky-500/30 text-sky-600 dark:text-sky-400',
+          glow: 'shadow-sky-500/10',
+          progressBar: 'bg-gradient-to-r from-sky-500 to-indigo-500',
         };
     }
   };
@@ -81,9 +78,10 @@ export function UnifiedToastItem({ t, isDark = false }) {
       className={`
         heis-toast group relative flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl border
         backdrop-blur-xl transition-all duration-200 cursor-pointer select-none
-        ${config.borderColor} ${config.glow} shadow-xl
-        ${isDark ? 'bg-[#130d33]/92 text-slate-100 shadow-black/40' : 'bg-white/95 text-slate-800 shadow-slate-900/10'}
-        ${t.visible ? 'animate-in fade-in-0 slide-in-from-top-3' : 'animate-out fade-out-0 slide-out-to-top-1'}
+        ${isDark
+          ? 'bg-[#130d33]/95 text-slate-100 border-white/10 ring-1 ring-white/5 shadow-2xl shadow-black/50'
+          : 'bg-white text-slate-900 border-slate-200/90 ring-1 ring-slate-900/10 shadow-[0_12px_32px_-4px_rgba(15,23,42,0.18),0_4px_12px_-2px_rgba(15,23,42,0.08)]'}
+        ${t.visible ? 'animate-in fade-in-0 slide-in-from-bottom-2' : 'animate-out fade-out-0 slide-out-to-bottom-1'}
       `}
       style={{
         minWidth: '260px',
@@ -112,11 +110,11 @@ export function UnifiedToastItem({ t, isDark = false }) {
         <X className="w-3 h-3 stroke-[2.2]" />
       </button>
 
-      {/* Micro-línea de progreso ultra-fina (1.5px) */}
+      {/* Barra de progreso de descarga / temporizador */}
       {t.type !== 'loading' && (
-        <div className="absolute bottom-0 left-3 right-3 h-[2px] bg-slate-100/40 dark:bg-white/5 overflow-hidden rounded-full">
+        <div className="absolute bottom-0 left-3 right-3 h-[2.5px] bg-slate-100 dark:bg-white/10 overflow-hidden rounded-full">
           <div
-            className={`h-full ${config.progressBar} toast-progress-bar origin-left`}
+            className={`h-full ${config.progressBar} toast-progress-bar origin-left rounded-full`}
             style={{
               animationDuration: `${duration}ms`,
             }}

@@ -11,16 +11,23 @@
     "migrate:cajas": "node src/migrations/migration_unificar_cajas.js"
   },
   "dependencies": {
+    "adm-zip": "^0.6.1",
     "axios": "^1.7.2",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
+    "handlebars": "^4.7.10",
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
     "mysql2": "^3.9.8",
+    "node-forge": "^1.4.3",
+    "nodefact": "^0.1.2",
+    "pdfkit": "^0.20.2",
+    "qrcode": "^1.5.4",
     "sequelize": "^6.37.3",
+    "xml-crypto": "^6.4.0",
+    "xmldom": "^0.6.0",
     "zod": "^3.23.8"
   }
 }
-

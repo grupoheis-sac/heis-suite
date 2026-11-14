@@ -234,7 +234,7 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [filtroCategoria, setFiltroCategoria] = useState('todos');
+  const [filtroCategoria, setFiltroCategoria] = useState('restaurante');
   const [searchParams] = useSearchParams();
   const empresaParam = searchParams.get('empresa') || localStorage.getItem('heis_empresa_id');
   const [brandConfig, setBrandConfig] = useState(null);
@@ -308,13 +308,12 @@ export default function Login() {
     : (brandConfig?.bgPreset ? PRESETS_FONDO[brandConfig.bgPreset] : null);
 
   const credencialesFiltradas = useMemo(() => {
-    if (filtroCategoria === 'todos') return CREDENCIALES_DEMO;
     return CREDENCIALES_DEMO.filter((c) => c.categoria === filtroCategoria);
   }, [filtroCategoria]);
 
   return (
     <div
-      className="min-h-screen w-screen flex flex-col justify-center items-center p-3 sm:p-6 relative overflow-x-hidden transition-all duration-300"
+      className="min-h-screen w-full flex flex-col justify-center items-center p-3 sm:p-5 relative overflow-y-auto transition-all duration-300"
       style={{
         backgroundColor: brandConfig?.colorFondoBody || (isDark ? '#0b0f19' : '#f1f5f9'),
         backgroundImage: bgUrl ? `url(${bgUrl})` : undefined,
@@ -331,16 +330,6 @@ export default function Login() {
         />
       )}
 
-      {/* Botón flotante tema oscuro */}
-      <button
-        type="button"
-        onClick={toggleTheme}
-        className="absolute top-4 right-4 sm:top-6 sm:right-6 p-2.5 rounded-2xl bg-white/80 dark:bg-slate-900/80 border border-slate-200 dark:border-white/10 text-slate-500 dark:text-slate-300 shadow-md backdrop-blur-md hover:scale-105 transition-all z-20 cursor-pointer"
-        title="Alternar tema claro/oscuro"
-      >
-        {isDark ? <Sun className="w-5 h-5 text-amber-400" /> : <Moon className="w-5 h-5 text-slate-700" />}
-      </button>
-
       {/* Efectos de fondo ambiental */}
       {!bgUrl && (
         <>
@@ -350,72 +339,90 @@ export default function Login() {
         </>
       )}
 
-      {/* Contenedor Principal Amplio (2 Columnas en Desktop) */}
-      <div className="w-full max-w-5xl z-10 my-auto">
-        {/* Brand Header */}
-        <div className="text-center mb-6">
-          <div className="flex items-center justify-center mb-2">
+      {/* Ventana de Inicio de Sesión (Estirada a los lados y Proporcionada) */}
+      <div className="w-full max-w-5xl xl:max-w-6xl 2xl:max-w-7xl z-10 my-auto bg-white/95 dark:bg-[#111827]/95 backdrop-blur-2xl border border-slate-200/80 dark:border-white/10 rounded-2xl sm:rounded-3xl p-4 sm:p-6 lg:p-7 shadow-2xl transition-all">
+        {/* Cabecera de Marca DENTRO de la Ventana */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pb-3.5 mb-4 border-b border-slate-200/80 dark:border-white/10">
+          <div className="flex flex-col sm:flex-row items-center gap-3 text-center sm:text-left">
             {brandConfig?.logoUrl ? (
               <img
                 src={brandConfig.logoUrl}
                 alt={brandConfig.tituloLogin || 'Logo Corporativo'}
                 style={{
-                  maxWidth: `${brandConfig.logoWidth || 220}px`,
-                  maxHeight: `${brandConfig.logoHeight || 60}px`,
+                  maxWidth: `${Math.min(brandConfig.logoWidth || 190, 190)}px`,
+                  maxHeight: `${Math.min(brandConfig.logoHeight || 46, 46)}px`,
                 }}
-                className="object-contain drop-shadow-md mx-auto"
+                className="object-contain drop-shadow-sm mx-auto sm:mx-0 shrink-0"
               />
             ) : (
-              <>
+              <div className="shrink-0 flex items-center justify-center">
                 <img
                   src="/logo-dia.png"
                   alt="HEIS SAC"
-                  className="h-16 w-auto object-contain dark:hidden drop-shadow-md"
+                  className="h-10 sm:h-11 w-auto object-contain dark:hidden drop-shadow-sm"
                 />
                 <img
                   src="/logo-noche.png"
                   alt="HEIS SAC"
-                  className="h-16 w-auto object-contain hidden dark:block drop-shadow-lg"
+                  className="h-10 sm:h-11 w-auto object-contain hidden dark:block drop-shadow-md"
                 />
-              </>
+              </div>
             )}
+            <div className="min-w-0">
+              <h1 className="text-lg sm:text-xl font-black tracking-tight text-slate-900 dark:text-white font-heading leading-tight">
+                {brandConfig?.tituloLogin || 'HEIS Suite Portal Central'}
+              </h1>
+              <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 font-medium">
+                {brandConfig?.subtituloLogin || 'Suite Multi-Empresa & Facturación Electrónica SUNAT'}
+              </p>
+            </div>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900 dark:text-white font-heading">
-            {brandConfig?.tituloLogin || 'HEIS Suite Enterprise'}
-          </h1>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            {brandConfig?.subtituloLogin || 'Acceso Unificado Multi-Tenant & Multi-Módulo'}
-          </p>
+
+          {/* Acciones de la Cabecera de la Ventana */}
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="hidden sm:inline-flex items-center gap-1.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
+              <ShieldCheck className="w-3.5 h-3.5" />
+              Acceso Seguro SSL
+            </span>
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="p-2 rounded-xl bg-slate-100 dark:bg-white/10 border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 hover:scale-105 transition-all cursor-pointer shadow-xs"
+              title="Alternar tema claro/oscuro"
+            >
+              {isDark ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-700" />}
+            </button>
+          </div>
         </div>
 
-        {/* Tarjeta Split: Formulario (Izquierda) + Selector de Credenciales por Sistema (Derecha) */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 bg-white/90 dark:bg-[#111827]/90 backdrop-blur-2xl border border-slate-200/80 dark:border-white/10 rounded-3xl p-5 sm:p-7 shadow-2xl">
-          {/* Columna Izquierda: Formulario de Login */}
-          <div className="lg:col-span-5 flex flex-col justify-between border-b lg:border-b-0 lg:border-r border-slate-200/80 dark:border-white/10 pb-6 lg:pb-0 lg:pr-6">
+        {/* Tarjeta Split: Formulario (4 Cols) + Selector de Credenciales (8 Cols para amplitud completa) */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* Columna Izquierda: Formulario de Login (4 columnas) */}
+          <div className="lg:col-span-4 flex flex-col justify-between border-b lg:border-b-0 lg:border-r border-slate-200/80 dark:border-white/10 pb-4 lg:pb-0 lg:pr-6">
             <div>
-              <div className="mb-4">
-                <h2 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
+              <div className="mb-3">
+                <h2 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
                   <KeyRound className="w-4 h-4 text-emerald-500" />
                   <span>Iniciar Sesión</span>
                 </h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
                   Ingresa tus credenciales o selecciona un rol predefinido.
                 </p>
               </div>
 
-              <form onSubmit={handleSubmit} className="space-y-3.5">
+              <form onSubmit={handleSubmit} className="space-y-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     Correo Electrónico
                   </label>
                   <div className="relative">
-                    <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                    <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
                     <input
                       type="email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="ejemplo@heis.pe"
-                      className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all text-slate-900 dark:text-white font-medium"
+                      className="w-full pl-9 pr-3.5 py-2 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all text-slate-900 dark:text-white font-medium"
                       required
                     />
                   </div>
@@ -426,13 +433,13 @@ export default function Login() {
                     Contraseña
                   </label>
                   <div className="relative">
-                    <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                    <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
                     <input
                       type="password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="••••••••"
-                      className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all text-slate-900 dark:text-white font-mono"
+                      className="w-full pl-9 pr-3.5 py-2 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all text-slate-900 dark:text-white font-mono"
                       required
                     />
                   </div>
@@ -444,7 +451,7 @@ export default function Login() {
                   style={{
                     backgroundColor: brandConfig?.colorPrimario || undefined,
                   }}
-                  className={`w-full py-2.5 px-4 rounded-xl text-white font-bold text-xs sm:text-sm shadow-md flex items-center justify-center gap-2 transition-all active:scale-[0.99] disabled:opacity-50 cursor-pointer mt-2 ${
+                  className={`w-full py-2.5 px-4 rounded-xl text-white font-bold text-xs sm:text-sm shadow-md flex items-center justify-center gap-2 transition-all active:scale-[0.99] disabled:opacity-50 cursor-pointer mt-1 ${
                     brandConfig?.colorPrimario
                       ? 'hover:opacity-95'
                       : 'bg-gradient-to-r from-emerald-500 via-teal-500 to-indigo-600 hover:opacity-95 shadow-emerald-500/20'
@@ -462,15 +469,15 @@ export default function Login() {
               </form>
             </div>
 
-            <div className="mt-5 pt-4 border-t border-slate-100 dark:border-white/5 text-[11px] text-slate-400">
-              <span className="font-bold text-slate-600 dark:text-slate-300">Tip de prueba:</span> Todas las cuentas demo utilizan la contraseña estándar <code className="bg-slate-100 dark:bg-white/10 px-1.5 py-0.5 rounded font-mono font-bold text-emerald-600 dark:text-emerald-400">admin123</code>.
+            <div className="mt-3.5 pt-2.5 border-t border-slate-100 dark:border-white/5 text-[11px] text-slate-400">
+              <span className="font-bold text-slate-600 dark:text-slate-300">Tip de prueba:</span> Contraseña estándar <code className="bg-slate-100 dark:bg-white/10 px-1 py-0.5 rounded font-mono font-bold text-emerald-600 dark:text-emerald-400">admin123</code>.
             </div>
           </div>
 
-          {/* Columna Derecha: Selector de Credenciales por Módulo / Sistema */}
-          <div className="lg:col-span-7 flex flex-col justify-between">
+          {/* Columna Derecha: Selector de Credenciales por Módulo / Sistema (8 columnas) */}
+          <div className="lg:col-span-8 flex flex-col justify-between">
             <div>
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 mb-2.5">
                 <div>
                   <h2 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
                     <Sparkles className="w-4 h-4 text-amber-500" />
@@ -480,15 +487,14 @@ export default function Login() {
                     Haz clic en cualquier rol para cargarlo automáticamente en el formulario.
                   </p>
                 </div>
-                <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20 self-start sm:self-auto">
+                <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20 self-start sm:self-auto">
                   {credencialesFiltradas.length} roles activos
                 </span>
               </div>
 
-              {/* Filtro de Categorías */}
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-2 scrollbar-none mb-3">
+              {/* Filtro de Categorías (Sin "Todos", espacioso y completamente visible) */}
+              <div className="flex flex-wrap items-center gap-2 mb-3">
                 {[
-                  { id: 'todos', label: 'Todos' },
                   { id: 'restaurante', label: 'Restaurante / Bar' },
                   { id: 'ferreteria', label: 'Ferretería Retail' },
                   { id: 'botica', label: 'Botica / Farmacia' },
@@ -499,7 +505,7 @@ export default function Login() {
                     key={cat.id}
                     type="button"
                     onClick={() => setFiltroCategoria(cat.id)}
-                    className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all whitespace-nowrap cursor-pointer border ${
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer border ${
                       filtroCategoria === cat.id
                         ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 border-transparent shadow-xs'
                         : 'bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-slate-300 border-slate-200/80 dark:border-white/10 hover:bg-slate-200/70'
@@ -511,7 +517,7 @@ export default function Login() {
               </div>
 
               {/* Grid Scrollable de Credenciales */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[360px] overflow-y-auto pr-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-[250px] overflow-y-auto pr-1">
                 {credencialesFiltradas.map((cred, idx) => {
                   const Icon = cred.icon;
                   const isSelected = email === cred.email;
@@ -520,15 +526,15 @@ export default function Login() {
                       key={idx}
                       type="button"
                       onClick={() => handleDemoLogin(cred)}
-                      className={`p-2.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
+                      className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
                         isSelected
-                          ? 'bg-emerald-500/10 border-emerald-500 text-slate-900 dark:text-white shadow-md'
+                          ? 'bg-emerald-500/10 border-emerald-500 text-slate-900 dark:text-white shadow-xs'
                           : 'bg-slate-50/80 dark:bg-white/[0.03] border-slate-200/70 dark:border-white/5 hover:border-emerald-500/40 hover:bg-emerald-500/5'
                       }`}
                     >
-                      <div className="flex items-start justify-between gap-1.5">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <div className="w-7 h-7 rounded-xl bg-slate-200 dark:bg-white/10 flex items-center justify-center shrink-0 text-slate-700 dark:text-slate-200">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="w-7 h-7 rounded-lg bg-slate-200 dark:bg-white/10 flex items-center justify-center shrink-0 text-slate-700 dark:text-slate-200">
                             <Icon className="w-3.5 h-3.5" />
                           </div>
                           <div className="min-w-0">
@@ -545,8 +551,8 @@ export default function Login() {
                         )}
                       </div>
 
-                      <div className="flex items-center justify-between pt-1 border-t border-slate-200/50 dark:border-white/5 text-[10px]">
-                        <span className="font-mono text-slate-500 dark:text-slate-400 truncate max-w-[130px]">
+                      <div className="flex items-center justify-between pt-1.5 border-t border-slate-200/50 dark:border-white/5 text-[10px]">
+                        <span className="font-mono text-slate-500 dark:text-slate-400 truncate max-w-[160px]">
                           {cred.email}
                         </span>
                         <span
@@ -564,15 +570,13 @@ export default function Login() {
         </div>
 
         {/* Footer y Aviso de Copyright */}
-        {brandConfig?.mostrarCopyright && brandConfig?.textoCopyright ? (
-          <p className="text-center text-xs text-slate-400 mt-5">
-            {brandConfig.textoCopyright}
+        <div className="mt-3.5 pt-2.5 border-t border-slate-200/60 dark:border-white/5 text-center">
+          <p className="text-[10px] sm:text-[11px] text-slate-400 dark:text-slate-500">
+            {brandConfig?.mostrarCopyright && brandConfig?.textoCopyright
+              ? brandConfig.textoCopyright
+              : '© 2026 HEIS Suite SAC • Multi-Tenant Enterprise Architecture • SUNAT Facturación'}
           </p>
-        ) : (
-          <p className="text-center text-xs text-slate-400 mt-5">
-            HEIS SAC &bull; Multi-Tenant Enterprise Architecture &bull; 2026
-          </p>
-        )}
+        </div>
       </div>
     </div>
   );

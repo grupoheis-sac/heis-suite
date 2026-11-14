@@ -226,9 +226,21 @@ export default function Cocina() {
                   }`}
                 >
                   <div>
-                    <h3 className="text-lg font-black text-white flex items-center gap-2">
-                      {orden.mesa?.name || `Orden #${orden.id}`}
-                    </h3>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-lg font-black text-white flex items-center gap-2">
+                        {orden.mesa?.name || `Orden #${orden.id}`}
+                      </h3>
+                      {orden.channel === 'takeaway' && (
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-purple-500/20 text-purple-300 border border-purple-500/40">
+                          📦 Llevar
+                        </span>
+                      )}
+                      {orden.channel === 'delivery' && (
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
+                          🛵 Delivery
+                        </span>
+                      )}
+                    </div>
                     <p className="text-[11px] text-slate-400">
                       Mozo: {orden.mozo?.nombre || orden.mozo?.name || 'Sala'}
                     </p>

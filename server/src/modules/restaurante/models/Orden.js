@@ -55,6 +55,38 @@ export const Orden = sequelize.define('Orden', {
     type: DataTypes.STRING(50),
     allowNull: true,
   },
+  channel: {
+    type: DataTypes.STRING(50),
+    defaultValue: 'salon',
+  },
+  discount: {
+    type: DataTypes.DECIMAL(10, 2),
+    defaultValue: 0.00,
+  },
+  tip: {
+    type: DataTypes.DECIMAL(10, 2),
+    defaultValue: 0.00,
+  },
+  received_amount: {
+    type: DataTypes.DECIMAL(10, 2),
+    defaultValue: 0.00,
+  },
+  change_amount: {
+    type: DataTypes.DECIMAL(10, 2),
+    defaultValue: 0.00,
+  },
+  monto_efectivo: {
+    type: DataTypes.DECIMAL(10, 2),
+    defaultValue: 0.00,
+  },
+  monto_digital: {
+    type: DataTypes.DECIMAL(10, 2),
+    defaultValue: 0.00,
+  },
+  billetera_digital: {
+    type: DataTypes.STRING(50),
+    allowNull: true,
+  },
   total: {
     type: DataTypes.DECIMAL(10, 2),
     allowNull: false,

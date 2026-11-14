@@ -37,6 +37,18 @@ export const Producto = sequelize.define('Producto', {
     allowNull: true,
     defaultValue: 0.00,
   },
+  price_takeaway: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: true,
+  },
+  price_delivery: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: true,
+  },
+  recipe_summary: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+  },
   stock: {
     type: DataTypes.INTEGER,
     defaultValue: 999,

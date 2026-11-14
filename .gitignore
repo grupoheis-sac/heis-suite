@@ -28,6 +28,14 @@ yarn-error.log*
 **/logs/*
 !**/logs/.gitkeep
 
+# Certificados y llaves digitales SUNAT (CRÍTICO: NUNCA SUBIR)
+server/certs/*
+!server/certs/.gitkeep
+*.pfx
+*.p12
+*.pem
+*.key
+
 # Almacenamiento local y subidas
 uploads/
 **/uploads/*
@@ -35,6 +43,9 @@ uploads/
 backups/
 **/backups/*
 !**/backups/.gitkeep
+server/storage/*
+server/storage/**/*
+!server/storage/**/.gitkeep
 
 # Base de datos local
 *.sql
