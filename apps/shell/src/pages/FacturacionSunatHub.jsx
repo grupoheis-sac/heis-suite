@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { api, consultarDocumento, useAuthStore } from '@heis/core';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { api, consultarDocumento, useAuthStore, useRealtime } from '@heis/core';
+import { Modal } from '@heis/ui';
 import toast from 'react-hot-toast';
 import {
   FileText,
@@ -21,7 +22,74 @@ import {
   ChevronRight,
   Ban,
   Loader2,
+  RefreshCw,
+  AlertTriangle,
+  Clock,
+  Send,
+  ShieldAlert,
+  Eye,
+  Copy,
+  Check,
 } from 'lucide-react';
+
+const MAX_INTENTOS_WORKER = 10;
+
+const ESTADO_SUNAT_CONFIG = {
+  ACEPTADO: {
+    label: 'Aceptado SUNAT',
+    badgeClass: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20',
+    icon: CheckCircle2,
+  },
+  ACEPTADO_CON_OBSERVACIONES: {
+    label: 'Aceptado con Obs.',
+    badgeClass: 'bg-teal-500/10 text-teal-600 dark:text-teal-300 border border-teal-500/20',
+    icon: CheckCircle2,
+  },
+  PENDIENTE: {
+    label: 'Pendiente de Envío',
+    badgeClass: 'bg-slate-500/10 text-slate-600 dark:text-slate-300 border border-slate-500/20',
+    icon: Clock,
+  },
+  PROCESANDO_ENVIO: {
+    label: 'Transmitiendo a SUNAT...',
+    badgeClass: 'bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20 animate-pulse',
+    icon: RefreshCw,
+  },
+  CONTINGENCIA_REINTENTAR: {
+    label: 'En Cola Contingencia',
+    badgeClass: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20',
+    icon: AlertTriangle,
+  },
+  RECHAZADO: {
+    label: 'Rechazado (Tributario)',
+    badgeClass: 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20',
+    icon: XCircle,
+  },
+  ERROR_CRITICO: {
+    label: 'Error Crítico',
+    badgeClass: 'bg-red-600/15 text-red-600 dark:text-red-400 border border-red-500/30',
+    icon: ShieldAlert,
+  },
+  ANULADO: {
+    label: 'Anulado / Baja',
+    badgeClass: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20',
+    icon: Ban,
+  },
+};
+
+function formatearProximoReintento(fechaIso) {
+  if (!fechaIso) return '—';
+  const fecha = new Date(fechaIso);
+  if (Number.isNaN(fecha.getTime())) return '—';
+
+  const diffSegundos = Math.round((fecha.getTime() - Date.now()) / 1000);
+  if (diffSegundos <= 0) return 'En breve (< 30s)';
+  if (diffSegundos < 60) return `En ${diffSegundos}s`;
+  const diffMinutos = Math.ceil(diffSegundos / 60);
+  if (diffMinutos < 60) return `En ${diffMinutos} min`;
+
+  return fecha.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' });
+}
 
 export default function FacturacionSunatHub() {
   const { empresa } = useAuthStore();
@@ -55,6 +123,116 @@ export default function FacturacionSunatHub() {
   const [fechaFin, setFechaFin] = useState('');
   const [busqueda, setBusqueda] = useState('');
   const [procesandoId, setProcesandoId] = useState(null);
+  const [reintentandoId, setReintentandoId] = useState(null);
+  const [visorAbierto, setVisorAbierto] = useState(false);
+  const [archivoVisor, setArchivoVisor] = useState({
+    cargando: false,
+    cpe: null,
+    tipo: 'xml',
+    filename: '',
+    content: '',
+  });
+  const [copiado, setCopiado] = useState(false);
+
+  // Escuchar eventos WebSocket del worker de contingencia SUNAT
+  useRealtime({
+    'sunat:comprobante_actualizado': (payload) => {
+      setComprobantes((prev) =>
+        prev.map((item) =>
+          item.id === payload.comprobante_id
+            ? {
+                ...item,
+                estado_sunat: payload.estado_sunat,
+                sunat_estado:
+                  payload.estado_sunat === 'ACEPTADO' || payload.estado_sunat === 'ACEPTADO_CON_OBSERVACIONES'
+                    ? 'ACEPTADO'
+                    : payload.estado_sunat,
+                proximo_reintento: null,
+                intentos_envio: payload.intentos_envio ?? item.intentos_envio,
+                codigo_sunat: payload.codigo_sunat ?? item.codigo_sunat,
+                ultimo_error_sunat: payload.ultimo_error_sunat ?? item.ultimo_error_sunat,
+                cdr_filename: payload.cdr_filename ?? item.cdr_filename,
+              }
+            : item
+        )
+      );
+      toast.success(`Comprobante ${payload.serie}-${payload.correlativo}: ${payload.estado_sunat}`);
+    },
+    'sunat:alerta_rechazo': (payload) => {
+      setComprobantes((prev) =>
+        prev.map((item) =>
+          item.id === payload.comprobante_id
+            ? {
+                ...item,
+                estado_sunat: 'RECHAZADO',
+                sunat_estado: 'RECHAZADO',
+                codigo_sunat: payload.codigo,
+                ultimo_error_sunat: payload.motivo,
+                proximo_reintento: null,
+              }
+            : item
+        )
+      );
+      toast.error(`Rechazo SUNAT (${payload.codigo}) en ${payload.comprobante}: ${payload.motivo}`);
+    },
+  });
+
+  const handleForzarReintento = async (cpe) => {
+    try {
+      setReintentandoId(cpe.id);
+      setComprobantes((prev) =>
+        prev.map((item) =>
+          item.id === cpe.id ? { ...item, estado_sunat: 'PROCESANDO_ENVIO' } : item
+        )
+      );
+
+      const res = await api.post(`/core/facturacion/comprobantes/${cpe.id}/reintentar`);
+      toast.success(res.data?.message || 'Reenvío a SUNAT encolado para ejecución inmediata.');
+      cargarComprobantes();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'No se pudo forzar el reenvío a SUNAT.');
+      cargarComprobantes();
+    } finally {
+      setReintentandoId(null);
+    }
+  };
+
+  const handleAbrirVisor = async (cpe, tipo = 'xml') => {
+    setVisorAbierto(true);
+    setCopiado(false);
+    setArchivoVisor({ cargando: true, cpe, tipo, filename: '', content: '' });
+
+    try {
+      const { data } = await api.get(
+        `/core/facturacion/comprobantes/${cpe.id}/archivo/${tipo}?modo=preview`
+      );
+      setArchivoVisor({
+        cargando: false,
+        cpe,
+        tipo,
+        filename: data.filename,
+        content: data.content,
+      });
+    } catch (err) {
+      setArchivoVisor({
+        cargando: false,
+        cpe,
+        tipo,
+        filename: 'No disponible',
+        content:
+          err.response?.data?.message ||
+          `No se pudo cargar el archivo ${tipo.toUpperCase()}.`,
+      });
+    }
+  };
+
+  const handleCopiarXml = () => {
+    if (!archivoVisor.content) return;
+    navigator.clipboard.writeText(archivoVisor.content);
+    setCopiado(true);
+    toast.success('Contenido copiado al portapapeles');
+    setTimeout(() => setCopiado(false), 2000);
+  };
 
   const [modalEmitir, setModalEmitir] = useState(false);
   const [emitiendo, setEmitiendo] = useState(false);
@@ -610,25 +788,90 @@ export default function FacturacionSunatHub() {
                       S/ {Number(c.total).toFixed(2)}
                     </td>
                     <td className="py-3 px-4 text-center">
-                      <span
-                        className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase ${
-                          c.sunat_estado === 'ACEPTADO'
-                            ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
-                            : c.sunat_estado === 'ANULADO'
-                            ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20'
-                            : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20'
-                        }`}
-                      >
-                        {c.sunat_estado === 'ACEPTADO' ? (
-                          <CheckCircle2 className="w-3 h-3" />
-                        ) : (
-                          <XCircle className="w-3 h-3" />
-                        )}
-                        {c.sunat_estado}
-                      </span>
+                      {(() => {
+                        const estadoKey = c.estado_sunat || c.sunat_estado || 'PENDIENTE';
+                        const config = ESTADO_SUNAT_CONFIG[estadoKey] || ESTADO_SUNAT_CONFIG.PENDIENTE;
+                        const IconoEstado = config.icon;
+                        const intentos = Number(c.intentos_envio || 0);
+
+                        return (
+                          <div className="flex flex-col items-center gap-1">
+                            <span
+                              className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase ${config.badgeClass}`}
+                            >
+                              <IconoEstado className="w-3 h-3" />
+                              {config.label}
+                            </span>
+
+                            {/* Barra de progreso de reintentos del Worker si aplica */}
+                            {(['CONTINGENCIA_REINTENTAR', 'PROCESANDO_ENVIO', 'ERROR_CRITICO'].includes(estadoKey) || intentos > 0) && (
+                              <div className="flex items-center gap-1.5 mt-0.5" title={`Intentos de envío: ${intentos}/${MAX_INTENTOS_WORKER}`}>
+                                <div className="w-16 bg-slate-200 dark:bg-white/10 h-1.5 rounded-full overflow-hidden">
+                                  <div
+                                    className={`h-full ${
+                                      intentos >= MAX_INTENTOS_WORKER
+                                        ? 'bg-rose-500'
+                                        : intentos > 0
+                                        ? 'bg-amber-400'
+                                        : 'bg-emerald-500'
+                                    }`}
+                                    style={{ width: `${Math.min(100, (intentos / MAX_INTENTOS_WORKER) * 100)}%` }}
+                                  />
+                                </div>
+                                <span className="text-[9px] font-mono font-bold text-slate-400">
+                                  {intentos}/{MAX_INTENTOS_WORKER}
+                                </span>
+                              </div>
+                            )}
+
+                            {/* Próximo reintento con backoff */}
+                            {estadoKey === 'CONTINGENCIA_REINTENTAR' && (
+                              <div className="text-[10px] text-amber-600 dark:text-amber-300 font-semibold flex items-center gap-1">
+                                <Clock className="w-2.5 h-2.5" />
+                                <span>{formatearProximoReintento(c.proximo_reintento)}</span>
+                              </div>
+                            )}
+
+                            {/* Error o rechazo de SUNAT si existe */}
+                            {c.ultimo_error_sunat && (
+                              <p
+                                className="text-[10px] text-rose-500 dark:text-rose-400 max-w-[170px] truncate"
+                                title={c.ultimo_error_sunat}
+                              >
+                                {c.codigo_sunat ? `[${c.codigo_sunat}] ` : ''}{c.ultimo_error_sunat}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </td>
                     <td className="py-3 px-4 text-right">
-                      <div className="inline-flex items-center gap-1.5">
+                      <div className="inline-flex items-center gap-1.5 flex-wrap justify-end">
+                        {/* Botón Forzar Reintento Inmediato a SUNAT */}
+                        {(['CONTINGENCIA_REINTENTAR', 'ERROR_CRITICO', 'PENDIENTE', 'RECHAZADO'].includes(c.estado_sunat || c.sunat_estado) || c.sunat_estado === 'RECHAZADO') && (
+                          <button
+                            type="button"
+                            disabled={reintentandoId === c.id}
+                            onClick={() => handleForzarReintento(c)}
+                            className="px-2.5 py-1 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-[11px] font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1 cursor-pointer disabled:opacity-40"
+                            title="Forzar reenvío inmediato a SUNAT"
+                          >
+                            <Send className="w-3.5 h-3.5" />
+                            <span>{reintentandoId === c.id ? 'Reintentando...' : 'Reintentar'}</span>
+                          </button>
+                        )}
+
+                        {/* Visor Interactivo XML / CDR */}
+                        <button
+                          type="button"
+                          onClick={() => handleAbrirVisor(c, 'xml')}
+                          className="px-2.5 py-1 rounded-xl bg-indigo-500/10 hover:bg-indigo-500/20 text-[11px] font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1 cursor-pointer"
+                          title="Inspeccionar XML Firmado UBL 2.1 o CDR en Visor"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>Visor</span>
+                        </button>
+
                         <button
                           type="button"
                           disabled={Boolean(procesandoId)}
@@ -867,6 +1110,85 @@ export default function FacturacionSunatHub() {
           </div>
         </div>
       )}
+
+      {/* Modal Visor XML / CDR */}
+      <Modal
+        isOpen={visorAbierto}
+        onClose={() => setVisorAbierto(false)}
+        title={
+          archivoVisor.cpe
+            ? `Auditoría UBL 2.1: ${archivoVisor.cpe.numero_formato || `${archivoVisor.cpe.serie}-${archivoVisor.cpe.correlativo}`}`
+            : 'Visor XML / CDR'
+        }
+        subtitle="Inspección de comprobante electrónico firmado y constancia de recepción de SUNAT"
+        icon={Code2}
+        maxWidth="max-w-3xl"
+      >
+        <div className="space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-200 dark:border-white/10 pb-3 flex-wrap gap-2">
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => handleAbrirVisor(archivoVisor.cpe, 'xml')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                  archivoVisor.tipo === 'xml'
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-slate-400'
+                }`}
+              >
+                XML Firmado (UBL 2.1)
+              </button>
+              <button
+                type="button"
+                onClick={() => handleAbrirVisor(archivoVisor.cpe, 'cdr')}
+                disabled={!archivoVisor.cpe?.cdr_filename && !archivoVisor.cpe?.cdr_respuesta}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all disabled:opacity-40 ${
+                  archivoVisor.tipo === 'cdr'
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-slate-400'
+                }`}
+              >
+                Constancia CDR SUNAT
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleCopiarXml}
+                disabled={!archivoVisor.content || archivoVisor.cargando}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-slate-700 dark:text-slate-200 text-xs font-bold disabled:opacity-40"
+              >
+                {copiado ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copiado ? 'Copiado' : 'Copiar'}</span>
+              </button>
+              {archivoVisor.cpe && (
+                <button
+                  type="button"
+                  onClick={() => handleDescargarArchivo(archivoVisor.cpe.id, archivoVisor.tipo, archivoVisor.cpe.numero_formato)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-sm"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Descargar</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="bg-slate-950 text-emerald-400 font-mono text-xs p-4 rounded-2xl max-h-[420px] overflow-auto border border-slate-800">
+            {archivoVisor.cargando ? (
+              <div className="py-8 text-center text-slate-400 font-sans flex items-center justify-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin text-emerald-500" />
+                <span>Obteniendo archivo desde el almacenamiento del tenant...</span>
+              </div>
+            ) : (
+              <pre className="whitespace-pre-wrap break-all select-all">
+                {archivoVisor.content}
+              </pre>
+            )}
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

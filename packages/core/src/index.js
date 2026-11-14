@@ -25,3 +25,19 @@ export {
   getUserPermissions,
   getRoleLandingRoute,
 } from './auth/rbac';
+
+export {
+  PAPER_PROFILES,
+  EscPosBuilder,
+  buildSunatQrPayload,
+  compilarTicketEscPos,
+  imprimirTicketTermico,
+  imprimirTicketCierreCaja,
+  generarHtmlTicketCierreCaja,
+  imprimirReciboCobranza,
+  generarHtmlReciboCobranza,
+  imprimirEstadoCuentaCliente,
+  generarHtmlEstadoCuentaCliente,
+  escapeHtml,
+  escHtml,
+} from './utils/impresionTermica.js';

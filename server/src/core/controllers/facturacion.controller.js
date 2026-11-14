@@ -1,4 +1,5 @@
 import fs from 'fs';
+import fsPromises from 'node:fs/promises';
 import path from 'path';
 import { Op } from 'sequelize';
 import sequelize from '../../config/db.js';
@@ -9,6 +10,10 @@ import {
 } from '../services/sunatUbl.service.js';
 import pdfService from '../services/sunat/pdfService.js';
 import { registrarAuditoria } from '../middleware/auditoria.middleware.js';
+import { resolveSafeTenantPath } from '../services/sunat/certService.js';
+import { ejecutarCicloContingenciaSunat } from '../services/sunat/contingencyWorker.js';
+
+const STORAGE_ROOT = path.resolve(process.cwd(), 'storage');
 
 export { obtenerSiguienteCorrelativo };
 
@@ -414,6 +419,120 @@ export async function descargarPdfComprobante(req, res) {
   }
 }
 
+/**
+ * POST /api/facturacion/comprobantes/:id/reintentar
+ * Fuerza el reenvío inmediato a SUNAT reseteando la ventana de espera (backoff)
+ */
+export async function forzarReintentoSunat(req, res, next) {
+  try {
+    const cpe = await ComprobanteElectronico.findOne({
+      where: { id: req.params.id, empresa_id: req.empresa_id },
+    });
+
+    if (!cpe) {
+      return res.status(404).json({ ok: false, success: false, message: 'Comprobante no encontrado.' });
+    }
+
+    if (['ACEPTADO', 'ACEPTADO_CON_OBSERVACIONES'].includes(cpe.estado_sunat)) {
+      return res.status(400).json({
+        ok: false,
+        success: false,
+        message: 'El comprobante ya fue aceptado por SUNAT y no requiere reenvío.',
+      });
+    }
+
+    await cpe.update({
+      estado_sunat: 'CONTINGENCIA_REINTENTAR',
+      proximo_reintento: new Date(),
+      intentos_envio: Math.min(Number(cpe.intentos_envio || 0), 9), // Garantiza al menos 1 intento adicional si estaba en ERROR_CRITICO
+    });
+
+    // Dispara ciclo asíncrono del worker inmediatamente sin bloquear el hilo HTTP
+    setImmediate(() => {
+      ejecutarCicloContingenciaSunat().catch(() => {});
+    });
+
+    return res.json({
+      ok: true,
+      success: true,
+      message: 'Reenvío a SUNAT encolado para ejecución inmediata.',
+      data: cpe,
+    });
+  } catch (error) {
+    if (next) next(error);
+    else res.status(500).json({ ok: false, success: false, error: error.message });
+  }
+}
+
+/**
+ * GET /api/facturacion/comprobantes/:id/archivo/:tipo
+ * :tipo = 'xml' | 'cdr'
+ * Devuelve el contenido XML extraído o el archivo binario para descarga segura
+ */
+export async function obtenerArchivoComprobante(req, res, next) {
+  try {
+    const { id, tipo } = req.params;
+    const modo = req.query.modo || 'preview'; // 'preview' | 'download'
+
+    const cpe = await ComprobanteElectronico.findOne({
+      where: { id, empresa_id: req.empresa_id },
+    });
+
+    if (!cpe) {
+      return res.status(404).json({ ok: false, success: false, message: 'Comprobante no encontrado.' });
+    }
+
+    const filename = tipo === 'cdr' ? cpe.cdr_filename : cpe.xml_firmado_filename;
+    let fileBuffer = null;
+
+    if (filename) {
+      try {
+        const safeFilePath = resolveSafeTenantPath(STORAGE_ROOT, req.empresa_id, filename);
+        fileBuffer = await fsPromises.readFile(safeFilePath);
+      } catch (e) {
+        console.warn(`[FACTURACION] Archivo no encontrado en disco: ${filename}, buscando en BD`);
+      }
+    }
+
+    if (!fileBuffer) {
+      const dbContent = tipo === 'cdr' ? cpe.cdr_respuesta : (cpe.xml_firmado || cpe.xml_generado);
+      if (dbContent) {
+        fileBuffer = Buffer.from(dbContent, 'utf8');
+      }
+    }
+
+    if (!fileBuffer) {
+      return res.status(404).json({
+        ok: false,
+        success: false,
+        message: `El archivo ${tipo.toUpperCase()} aún no ha sido generado o registrado para este comprobante.`,
+      });
+    }
+
+    const defaultName = `${tipo === 'cdr' ? 'R-' : ''}${cpe.serie}-${cpe.correlativo}.${filename?.endsWith('.zip') ? 'zip' : 'xml'}`;
+    const finalFilename = filename ? path.basename(filename) : defaultName;
+
+    if (modo === 'download') {
+      res.setHeader('Content-Disposition', `attachment; filename="${finalFilename}"`);
+      res.setHeader('Content-Type', finalFilename.endsWith('.zip') ? 'application/zip' : 'application/xml');
+      return res.send(fileBuffer);
+    }
+
+    // Modo preview para el visor modal del frontend
+    return res.json({
+      ok: true,
+      success: true,
+      filename: finalFilename,
+      tipo: tipo.toUpperCase(),
+      content: fileBuffer.toString('utf8'),
+      base64: fileBuffer.toString('base64'),
+    });
+  } catch (error) {
+    if (next) next(error);
+    else res.status(500).json({ ok: false, success: false, error: error.message });
+  }
+}
+
 export default {
   listarComprobantes,
   emitirComprobante,
@@ -423,4 +542,6 @@ export default {
   descargarCdrComprobante,
   descargarPdfComprobante,
   obtenerSiguienteCorrelativo,
+  forzarReintentoSunat,
+  obtenerArchivoComprobante,
 };
