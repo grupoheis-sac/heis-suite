@@ -1,7 +1,7 @@
 import React, { Suspense, lazy, useState, useEffect } from 'react';
 import { Routes, Route, Navigate, useLocation, Outlet } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
-import { Layout, UnifiedToastItem } from '@heis/ui';
+import { Layout, UnifiedToastItem, SubscriptionStatusBanner } from '@heis/ui';
 import {
   EmpresaProvider,
   useAuthStore,
@@ -234,6 +234,7 @@ function MainAppShell() {
         { id: 'sunat-quick', title: 'Facturación SUNAT UBL 2.1', desc: 'Boletas, Facturas, Notas de Crédito y XML', path: '/facturacion-sunat', category: 'Core Fiscal', badge: 'UBL 2.1' },
       ]}
     >
+      <SubscriptionStatusBanner empresa={empresa} user={user} />
       <Suspense fallback={<PageLoader />}>
         <Outlet />
       </Suspense>

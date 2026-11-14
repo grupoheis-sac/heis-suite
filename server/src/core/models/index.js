@@ -9,6 +9,7 @@ import PlanSaaS from './PlanSaaS.js';
 import CajaGeneral from './CajaGeneral.js';
 import CajaMovimientoGeneral from './CajaMovimientoGeneral.js';
 import ComprobanteElectronico from './ComprobanteElectronico.js';
+import PagoSuscripcionSaaS from './PagoSuscripcionSaaS.js';
 
 Empresa.hasMany(Sucursal, { foreignKey: 'empresa_id', as: 'sucursales', onDelete: 'CASCADE' });
 Sucursal.belongsTo(Empresa, { foreignKey: 'empresa_id', as: 'empresa' });
@@ -55,6 +56,9 @@ ComprobanteElectronico.belongsTo(Sucursal, { foreignKey: 'sucursal_id', as: 'suc
 Usuario.hasMany(ComprobanteElectronico, { foreignKey: 'id_usuario', as: 'comprobantes_emitidos' });
 ComprobanteElectronico.belongsTo(Usuario, { foreignKey: 'id_usuario', as: 'usuario' });
 
+Empresa.hasMany(PagoSuscripcionSaaS, { foreignKey: 'empresa_id', as: 'pagos_saas', onDelete: 'CASCADE' });
+PagoSuscripcionSaaS.belongsTo(Empresa, { foreignKey: 'empresa_id', as: 'empresa' });
+
 export {
   sequelize,
   Empresa,
@@ -67,6 +71,7 @@ export {
   CajaGeneral,
   CajaMovimientoGeneral,
   ComprobanteElectronico,
+  PagoSuscripcionSaaS,
 };
 
 export default {
@@ -81,4 +86,5 @@ export default {
   CajaGeneral,
   CajaMovimientoGeneral,
   ComprobanteElectronico,
+  PagoSuscripcionSaaS,
 };

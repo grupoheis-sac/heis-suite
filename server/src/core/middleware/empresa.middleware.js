@@ -3,7 +3,9 @@ import {
   tenantStorage,
   getCachedEmpresa,
   setCachedEmpresa,
+  invalidateEmpresaCache,
 } from '../context/tenantContext.js';
+import { evaluarVigenciaEmpresa } from '../services/subscriptionGuard.service.js';
 
 export async function tenantContext(req, res, next) {
   try {
@@ -50,10 +52,38 @@ export async function tenantContext(req, res, next) {
       }
     }
 
-    if (!empresa || !empresa.activo) {
+    if (!empresa) {
       return res.status(403).json({
         success: false,
-        error: 'Empresa no encontrada o con suscripción suspendida. Contacte a soporte HEIS.',
+        error: 'Empresa no encontrada en la plataforma HEIS.',
+      });
+    }
+
+    const estadoVigencia = evaluarVigenciaEmpresa(empresa);
+    req.suscripcion = estadoVigencia;
+
+    // Exponer cabeceras informativas de suscripción para el frontend
+    res.setHeader('X-HEIS-Subscription-State', estadoVigencia.estado_ciclo);
+    if (estadoVigencia.dias_restantes !== null && estadoVigencia.dias_restantes !== undefined) {
+      res.setHeader('X-HEIS-Subscription-Days', String(estadoVigencia.dias_restantes));
+    }
+
+    // Si el usuario NO es SuperAdmin y la suscripción está suspendida o excedió el período de gracia
+    if (req.user.rol !== 'superadmin' && estadoVigencia.bloqueado) {
+      if (estadoVigencia.estado_ciclo === 'SUSPENDIDO_MORA' && empresa.activo) {
+        await Empresa.update(
+          { activo: false },
+          { where: { id: empresa.id }, skipTenant: true }
+        );
+        invalidateEmpresaCache(empresa.id);
+      }
+
+      return res.status(402).json({
+        success: false,
+        code: 'SUBSCRIPTION_SUSPENDED',
+        estado_ciclo: estadoVigencia.estado_ciclo,
+        fecha_vencimiento: empresa.fecha_vencimiento,
+        error: estadoVigencia.mensaje,
       });
     }
 
