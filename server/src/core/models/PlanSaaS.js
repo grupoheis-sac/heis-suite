@@ -6,6 +6,10 @@ export const PlanSaaS = sequelize.define('PlanSaaS', {
     type: DataTypes.STRING(50),
     primaryKey: true,
   },
+  codigo: {
+    type: DataTypes.STRING(50),
+    allowNull: true,
+  },
   nombre: {
     type: DataTypes.STRING(100),
     allowNull: false,
@@ -14,6 +18,26 @@ export const PlanSaaS = sequelize.define('PlanSaaS', {
     type: DataTypes.DECIMAL(10, 2),
     allowNull: false,
     defaultValue: 99.00,
+  },
+  precio_anual: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: true,
+    defaultValue: 990.00,
+  },
+  max_sucursales: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    defaultValue: 1,
+  },
+  max_usuarios: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    defaultValue: 5,
+  },
+  max_comprobantes_mes: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    defaultValue: 1000,
   },
   badge: {
     type: DataTypes.STRING(50),

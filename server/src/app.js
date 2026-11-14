@@ -11,6 +11,7 @@ import facturacionRoutes from './core/routes/facturacion.routes.js';
 import biRealtimeRoutes from './core/routes/bi-realtime.routes.js';
 import superadminRoutes from './core/routes/superadmin.routes.js';
 import consultaRoutes from './core/routes/consulta.routes.js';
+import suscripcionesRoutes from './core/routes/suscripciones.routes.js';
 import { obtenerComunicadoActivo, obtenerWhitelabelPublico } from './core/controllers/superadmin.controller.js';
 import { loadModules } from './loader.js';
 
@@ -26,7 +27,16 @@ export async function createApp() {
     contentSecurityPolicy: false,
   }));
   app.use(cors({ origin: true, credentials: true }));
-  app.use(express.json());
+  app.use(
+    express.json({
+      limit: '1mb',
+      verify: (req, _res, buf) => {
+        if (req.originalUrl && req.originalUrl.startsWith('/api/suscripciones/webhooks')) {
+          req.rawBody = buf;
+        }
+      },
+    })
+  );
   app.use(express.urlencoded({ extended: true }));
 
   const healthResponse = (req, res) => {
@@ -44,6 +54,7 @@ export async function createApp() {
   // Rutas Core Transversales (Siempre activas para todos los giros)
   app.use('/api/auth', authRoutes);
   app.use('/api/admin', adminRoutes);
+  app.use('/api/suscripciones', suscripcionesRoutes);
   app.use('/api/core/caja', cajaRoutes);
   app.use('/api/caja', cajaRoutes);
   app.use('/api/core/facturacion', facturacionRoutes);

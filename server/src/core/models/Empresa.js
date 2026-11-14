@@ -27,6 +27,32 @@ export const Empresa = sequelize.define('Empresa', {
     type: DataTypes.ENUM('starter', 'professional', 'enterprise'),
     defaultValue: 'professional',
   },
+  plan_codigo: {
+    type: DataTypes.ENUM('BASICO', 'PRO', 'ENTERPRISE'),
+    allowNull: false,
+    defaultValue: 'PRO',
+  },
+  estado_suscripcion: {
+    type: DataTypes.ENUM('TRIAL', 'ACTIVA', 'PAST_DUE', 'SUSPENDIDA', 'CANCELADA'),
+    allowNull: false,
+    defaultValue: 'TRIAL',
+  },
+  trial_ends_at: {
+    type: DataTypes.DATE,
+    allowNull: true,
+  },
+  suscripcion_vence_en: {
+    type: DataTypes.DATE,
+    allowNull: true,
+  },
+  pasarela_customer_id: {
+    type: DataTypes.STRING(128),
+    allowNull: true,
+  },
+  pasarela_subscription_id: {
+    type: DataTypes.STRING(128),
+    allowNull: true,
+  },
   precio_mensual: {
     type: DataTypes.DECIMAL(10, 2),
     allowNull: true,

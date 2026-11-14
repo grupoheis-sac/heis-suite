@@ -91,3 +91,10 @@ export const consultaRateLimiter = createRateLimiter({
   max: 30,
   message: 'Límite de consultas de DNI/RUC alcanzado. Por favor espere un minuto.',
 });
+
+// Limiter estricto para Onboarding y operaciones públicas críticas: máx 10 peticiones cada 15 minutos
+export const rateLimiterEsticto = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: 'Demasiadas solicitudes de registro u operaciones críticas. Inténtelo más tarde.',
+});

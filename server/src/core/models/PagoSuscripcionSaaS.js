@@ -11,10 +11,37 @@ export const PagoSuscripcionSaaS = sequelize.define('PagoSuscripcionSaaS', {
     type: DataTypes.INTEGER,
     allowNull: false,
   },
+  plan_id: {
+    type: DataTypes.STRING(50),
+    allowNull: true,
+  },
   plan: {
     type: DataTypes.STRING(40),
+    allowNull: true,
+    defaultValue: 'PRO',
+  },
+  pasarela: {
+    type: DataTypes.ENUM('MERCADOPAGO', 'IZIPAY', 'STRIPE', 'TRANSFERENCIA'),
     allowNull: false,
-    defaultValue: 'professional',
+    defaultValue: 'MERCADOPAGO',
+  },
+  pasarela_tx_id: {
+    type: DataTypes.STRING(128),
+    allowNull: true,
+  },
+  comprobante_emitido_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
+  firma_verificada: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+  },
+  periodo: {
+    type: DataTypes.STRING(20),
+    allowNull: true,
+    defaultValue: 'MENSUAL',
   },
   periodo_meses: {
     type: DataTypes.INTEGER,

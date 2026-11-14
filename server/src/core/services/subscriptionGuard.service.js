@@ -206,3 +206,78 @@ export async function registrarRenovacionSuscripcion({
     pago,
   };
 }
+
+const RUTAS_SIEMPRE_PERMITIDAS = [
+  '/api/suscripciones',
+  '/api/auth/logout',
+  '/api/facturacion/comprobantes', // Permite descargar XML/CDR propios aunque esté vencido (Obligación SUNAT)
+];
+
+/**
+ * Middleware Express para proteger rutas contra empresas con suscripción o trial vencido
+ */
+export const verifySubscriptionStatus = async (req, res, next) => {
+  try {
+    if (req.user?.es_superadmin || req.user?.rol === 'superadmin') return next();
+
+    const empresaId = req.empresa_id || req.user?.empresa_id;
+    if (!empresaId) return next();
+
+    const empresa = await Empresa.findOne({
+      where: { id: empresaId },
+      attributes: [
+        'id',
+        'plan_codigo',
+        'estado_suscripcion',
+        'trial_ends_at',
+        'suscripcion_vence_en',
+        'fecha_vencimiento',
+        'activo',
+      ],
+      skipTenantScope: true,
+    });
+
+    if (!empresa || !empresa.activo) {
+      return res.status(403).json({
+        ok: false,
+        code: 'TENANT_SUSPENDED',
+        message: 'La cuenta de su empresa se encuentra suspendida.',
+      });
+    }
+
+    const ahora = new Date();
+    const fechaLimite = new Date(
+      empresa.suscripcion_vence_en || empresa.trial_ends_at || empresa.fecha_vencimiento || ahora
+    );
+    const diasRestantes = Math.ceil(
+      (fechaLimite.getTime() - ahora.getTime()) / (1000 * 60 * 60 * 24)
+    );
+
+    // Inyecta cabeceras para que SubscriptionStatusBanner.jsx muestre la alerta de días restantes
+    res.setHeader('X-Heis-Plan', empresa.plan_codigo || 'PRO');
+    res.setHeader('X-Heis-Sub-Status', empresa.estado_suscripcion || 'TRIAL');
+    res.setHeader('X-Heis-Days-Left', String(Math.max(0, diasRestantes)));
+
+    // Si el Trial de 14 días o la suscripción vencieron, bloquea escrituras (POST/PUT/DELETE) salvo el pago
+    if (diasRestantes < 0 && req.method !== 'GET') {
+      const esRutaPermitida = RUTAS_SIEMPRE_PERMITIDAS.some((r) =>
+        req.originalUrl?.startsWith(r)
+      );
+      if (!esRutaPermitida) {
+        return res.status(402).json({
+          ok: false,
+          code: 'SUBSCRIPTION_EXPIRED',
+          estado_suscripcion: empresa.estado_suscripcion,
+          message:
+            empresa.estado_suscripcion === 'TRIAL'
+              ? 'Su periodo de prueba gratuita de 14 días ha finalizado. Elija un plan (Básico, Pro o Enterprise) para continuar operando.'
+              : 'Su suscripción ha vencido. Realice el pago de renovación para reactivar las ventas y facturación de forma inmediata.',
+        });
+      }
+    }
+
+    return next();
+  } catch (error) {
+    next(error);
+  }
+};

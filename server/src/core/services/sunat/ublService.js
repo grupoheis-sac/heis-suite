@@ -43,6 +43,31 @@ const compilarNotaDebitoBase = handlebars.compile(fixedDebitNoteTemplate);
  * - Nota de Débito Electrónica (08)
  * Con Leyenda 1000 (Monto en letras) y Forma de Pago (RS 193-2020 SUNAT)
  */
+/**
+ * Calcula el desglose tributario exacto UBL 2.1 para una línea de comprobante
+ * Valor Unitario con 6 decimales y totales con 2 decimales.
+ */
+export function calcularTotalesLineaUBL21(linea, tasaIgv = 0.18) {
+  const cantidad = Number(linea.cantidad || 1);
+  const precioUnitario = Number(linea.precio_unitario || linea.precio || 0); // Precio inc. IGV
+  const factor = 1 + tasaIgv;
+
+  const valorUnitario = Number((precioUnitario / factor).toFixed(6));
+  const valorVentaLinea = Number((valorUnitario * cantidad).toFixed(2));
+  const totalLinea = Number((precioUnitario * cantidad).toFixed(2));
+  const igvLinea = Number((totalLinea - valorVentaLinea).toFixed(2));
+
+  return {
+    cantidad,
+    precioUnitario,
+    valorUnitario,
+    valorVentaLinea,
+    totalLinea,
+    igvLinea,
+    tasaIgv,
+  };
+}
+
 export class UblService {
   /**
    * Transforma el payload de venta estándar en el modelo de datos UBL 2.1 y compila el XML
