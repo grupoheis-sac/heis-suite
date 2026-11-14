@@ -29,14 +29,17 @@ export async function createApp() {
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 
-  app.get('/api/health', (req, res) => {
+  const healthResponse = (req, res) => {
     res.json({
       status: 'online',
       suite: 'HEIS Suite Platform (Unified Single-Container Multi-Tenant)',
       version: '2.0.0',
       timestamp: new Date().toISOString(),
     });
-  });
+  };
+
+  app.get('/health', healthResponse);
+  app.get('/api/health', healthResponse);
 
   // Rutas Core Transversales (Siempre activas para todos los giros)
   app.use('/api/auth', authRoutes);

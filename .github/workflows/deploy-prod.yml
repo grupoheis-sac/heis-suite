@@ -1,0 +1,167 @@
+# .github/workflows/deploy-prod.yml
+name: CI/CD Producción — HEIS Suite
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false # Jamás cancelar un despliegue productivo a mitad de una migración SQL
+
+env:
+  REGISTRY: ghcr.io
+  API_IMAGE: ghcr.io/${{ github.repository_owner }}/heis-suite-api
+  WEB_IMAGE: ghcr.io/${{ github.repository_owner }}/heis-suite-web
+
+jobs:
+  # ==========================================
+  # JOB 1: Verificación de Sintaxis, Auditoría y Build del Monorepo
+  # ==========================================
+  verify-monorepo:
+    name: 1. Validar Monorepo (Shell + Core + UI + Server)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js 20 con caché de npm
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Instalar dependencias de Workspaces
+        run: npm ci
+
+      - name: Validar sintaxis ESM de Backend y Migraciones
+        run: |
+          node --check server/src/index.js
+          node --check server/src/app.js
+          node --check server/src/migrations/migrator.js
+          node --check server/src/core/services/sunat/contingencyWorker.js
+
+      - name: Compilar Frontend de Producción (apps/shell)
+        run: npm run build --workspace=apps/shell
+
+  # ==========================================
+  # JOB 2: Construcción y Publicación de Imágenes Docker Multi-Stage
+  # ==========================================
+  build-and-push:
+    name: 2. Build & Push Imágenes a GHCR
+    needs: verify-monorepo
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      sha_tag: ${{ steps.meta.outputs.sha_tag }}
+    steps:
+      - name: Checkout repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login en GitHub Container Registry (GHCR)
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generar tag inmutable por commit SHA
+        id: meta
+        run: echo "sha_tag=sha-${GITHUB_SHA::8}" >> $GITHUB_OUTPUT
+
+      - name: Build & Push Backend (server/Dockerfile)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./server/Dockerfile
+          push: true
+          tags: |
+            ${{ env.API_IMAGE }}:${{ steps.meta.outputs.sha_tag }}
+            ${{ env.API_IMAGE }}:latest
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+
+      - name: Build & Push Frontend + Nginx (apps/shell/Dockerfile)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./apps/shell/Dockerfile
+          push: true
+          build-args: |
+            VITE_API_URL=/api
+          tags: |
+            ${{ env.WEB_IMAGE }}:${{ steps.meta.outputs.sha_tag }}
+            ${{ env.WEB_IMAGE }}:latest
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
+
+  # ==========================================
+  # JOB 3: Despliegue Transaccional con Rollback Automático
+  # ==========================================
+  deploy-production:
+    name: 3. Deploy a Producción & Healthcheck
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Ejecutar despliegue remoto vía SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.PROD_SSH_HOST }}
+          username: ${{ secrets.PROD_SSH_USER }}
+          key: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
+          port: ${{ secrets.PROD_SSH_PORT || 22 }}
+          script_stop: true
+          script: |
+            set -euo pipefail
+            cd /opt/heis-suite
+
+            # 1. Guardar el tag actual por si se requiere Rollback automático
+            PREVIOUS_TAG=$(grep -E '^IMAGE_TAG=' .env.production | cut -d'=' -f2 || echo "latest")
+            NEW_TAG="${{ needs.build-and-push.outputs.sha_tag }}"
+            echo "Desplegando versión ${NEW_TAG} (Versión previa: ${PREVIOUS_TAG})..."
+
+            # 2. Autenticar en GHCR y descargar nuevas imágenes antes de detener contenedores
+            echo "${{ secrets.GHCR_READ_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+            IMAGE_TAG="${NEW_TAG}" docker compose -f docker-compose.prod.yml pull server nginx
+
+            # 3. Ejecutar backup preventivo antes de aplicar migraciones SQL
+            if [ -f "/opt/heis-suite/scripts/backup_nightly.sh" ]; then
+              /opt/heis-suite/scripts/backup_nightly.sh || echo "Aviso: Backup preventivo completado con advertencias"
+            fi
+
+            # 4. Ejecutar migraciones versionadas con lock distribuido en un contenedor efímero
+            IMAGE_TAG="${NEW_TAG}" docker compose -f docker-compose.prod.yml run --rm server node src/migrations/migrator.js up
+
+            # 5. Actualizar IMAGE_TAG y recrear servicios de aplicación (MySQL y Redis siguen activos)
+            sed -i "s/^IMAGE_TAG=.*/IMAGE_TAG=${NEW_TAG}/" .env.production || echo "IMAGE_TAG=${NEW_TAG}" >> .env.production
+            IMAGE_TAG="${NEW_TAG}" docker compose -f docker-compose.prod.yml up -d --no-deps server nginx
+
+            # 6. Verificación de Healthcheck post-despliegue (hasta 30 segundos)
+            HEALTHY=0
+            for i in {1..10}; do
+              if docker exec heis_server curl -fsS http://localhost:4000/health > /dev/null 2>&1; then
+                HEALTHY=1
+                break
+              fi
+              sleep 3
+            done
+
+            # 7. Rollback automático si el servidor no pasa el Healthcheck
+            if [ "${HEALTHY}" -ne 1 ]; then
+              echo "❌ ERROR CRÍTICO: El nuevo contenedor no superó /health. Ejecutando Rollback a ${PREVIOUS_TAG}..."
+              sed -i "s/^IMAGE_TAG=.*/IMAGE_TAG=${PREVIOUS_TAG}/" .env.production
+              IMAGE_TAG="${PREVIOUS_TAG}" docker compose -f docker-compose.prod.yml up -d --no-deps server nginx
+              exit 1
+            fi
+
+            # 8. Limpiar imágenes huérfanas antiguas
+            docker image prune -f
+            echo "✅ Despliegue productivo completado y verificado en ${NEW_TAG}."

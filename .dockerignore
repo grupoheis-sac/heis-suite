@@ -1,0 +1,13 @@
+**/node_modules
+**/dist
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+*.bat
+server/storage/*
+!server/storage/.gitkeep
+server/certs/*
+!server/certs/.gitkeep
+npm-debug.log*
