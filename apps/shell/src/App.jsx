@@ -20,6 +20,8 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import SuperAdminHub from './pages/SuperAdminHub';
 import ConfiguracionView from './pages/ConfiguracionView';
+import OnboardingWizard from './pages/OnboardingWizard';
+import BillingCheckoutModal from './pages/BillingCheckoutModal';
 const FacturacionSunatHub = lazy(() => import('./pages/FacturacionSunatHub'));
 
 // Módulo Restaurante (Lazy loaded)
@@ -191,6 +193,13 @@ function MainAppShell() {
   const location = useLocation();
 
   const [comunicado, setComunicado] = useState(null);
+  const [checkoutAbierto, setCheckoutAbierto] = useState(false);
+
+  useEffect(() => {
+    const handleOpenCheckout = () => setCheckoutAbierto(true);
+    window.addEventListener('heis:open-checkout', handleOpenCheckout);
+    return () => window.removeEventListener('heis:open-checkout', handleOpenCheckout);
+  }, []);
 
   useEffect(() => {
     api.get(`/comunicados/activo${empresa?.id ? `?empresa_id=${empresa.id}` : ''}`)
@@ -282,7 +291,15 @@ function MainAppShell() {
         { id: 'sunat-quick', title: 'Facturación SUNAT UBL 2.1', desc: 'Boletas, Facturas, Notas de Crédito y XML', path: '/facturacion-sunat', category: 'Core Fiscal', badge: 'UBL 2.1' },
       ]}
     >
-      <SubscriptionStatusBanner empresa={empresa} user={user} />
+      <SubscriptionStatusBanner
+        empresa={empresa}
+        user={user}
+        onOpenCheckoutModal={() => setCheckoutAbierto(true)}
+      />
+      <BillingCheckoutModal
+        isOpen={checkoutAbierto}
+        onClose={() => setCheckoutAbierto(false)}
+      />
       <Suspense fallback={<PageLoader />}>
         <Outlet />
       </Suspense>
@@ -311,8 +328,9 @@ export default function App() {
       </Toaster>
 
       <Routes>
-        {/* Ruta pública */}
+        {/* Rutas públicas */}
         <Route path="/login" element={<Login />} />
+        <Route path="/registro" element={<OnboardingWizard />} />
 
         {/* Rutas protegidas bajo el Guard y MainAppShell */}
         <Route element={<RequireAuth />}>

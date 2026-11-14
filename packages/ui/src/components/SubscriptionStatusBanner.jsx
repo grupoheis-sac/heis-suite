@@ -1,99 +1,142 @@
+// packages/ui/src/components/SubscriptionStatusBanner.jsx
 import React, { useState, useEffect } from 'react';
-import { AlertTriangle, Clock, ShieldAlert, X } from 'lucide-react';
+import { Sparkles, AlertTriangle, CreditCard, CheckCircle2 } from 'lucide-react';
 
-export default function SubscriptionStatusBanner({ empresa, user }) {
-  const [dismissed, setDismissed] = useState(false);
-  const [estadoInfo, setEstadoInfo] = useState(null);
+export default function SubscriptionStatusBanner({
+  empresa,
+  user,
+  initialPlan = 'PRO',
+  initialStatus = 'TRIAL',
+  initialDaysLeft = 14,
+  onOpenCheckoutModal,
+}) {
+  const isSuperAdmin = user?.rol === 'superadmin' || user?.role === 'superadmin';
+
+  // Calcular valores iniciales combinando props y objeto empresa si está disponible
+  const calcInitial = () => {
+    let plan = empresa?.plan_codigo || empresa?.plan || initialPlan;
+    let status = empresa?.estado_suscripcion || initialStatus;
+    let daysLeft = initialDaysLeft;
+
+    if (empresa?.fecha_vencimiento || empresa?.suscripcion_vence_en) {
+      const fechaStr = empresa.suscripcion_vence_en || empresa.fecha_vencimiento;
+      const targetDate = new Date(fechaStr);
+      if (!isNaN(targetDate.getTime())) {
+        const hoy = new Date();
+        const diffMs = targetDate.getTime() - hoy.getTime();
+        daysLeft = Math.round(diffMs / (1000 * 60 * 60 * 24));
+      }
+    }
+
+    return {
+      plan,
+      status,
+      daysLeft,
+      lastInvoice: null,
+    };
+  };
+
+  const [subState, setSubState] = useState(calcInitial);
 
   useEffect(() => {
-    if (!empresa || !empresa.fecha_vencimiento || user?.rol === 'superadmin') {
-      setEstadoInfo(null);
-      return;
-    }
+    setSubState((prev) => {
+      const init = calcInitial();
+      return {
+        ...prev,
+        plan: init.plan,
+        status: prev.lastInvoice ? prev.status : init.status,
+        daysLeft: prev.lastInvoice ? prev.daysLeft : init.daysLeft,
+      };
+    });
+  }, [empresa?.fecha_vencimiento, empresa?.suscripcion_vence_en, empresa?.estado_suscripcion, empresa?.plan_codigo]);
 
-    const hoy = new Date();
-    hoy.setHours(0, 0, 0, 0);
-    const [y, m, d] = String(empresa.fecha_vencimiento).split('-').map(Number);
-    const fechaVenc = new Date(y, (m || 1) - 1, d || 1);
-    fechaVenc.setHours(0, 0, 0, 0);
-
-    const diasRestantes = Math.round((fechaVenc.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24));
-
-    if (diasRestantes >= 0 && diasRestantes <= 5) {
-      setEstadoInfo({
-        tipo: 'POR_VENCER',
-        dias: diasRestantes,
-        fecha: empresa.fecha_vencimiento,
+  useEffect(() => {
+    const handleSubUpdated = (e) => {
+      if (!e.detail) return;
+      const vence = new Date(e.detail.suscripcion_vence_en || Date.now() + 30 * 86400000);
+      const dias = Math.max(1, Math.ceil((vence.getTime() - Date.now()) / 86400000));
+      setSubState({
+        plan: e.detail.plan_codigo || 'PRO',
+        status: e.detail.estado_suscripcion || 'ACTIVA',
+        daysLeft: dias,
+        lastInvoice: e.detail.factura_heis || null,
       });
-    } else if (diasRestantes < 0 && Math.abs(diasRestantes) <= 3) {
-      const diasGracia = Math.max(0, 3 - Math.abs(diasRestantes));
-      setEstadoInfo({
-        tipo: 'EN_GRACIA',
-        diasGracia,
-        fecha: empresa.fecha_vencimiento,
-      });
+    };
+
+    window.addEventListener('heis:subscription-updated', handleSubUpdated);
+    return () => window.removeEventListener('heis:subscription-updated', handleSubUpdated);
+  }, []);
+
+  // SuperAdmin sin empresa no ve banner
+  if (isSuperAdmin && !empresa) {
+    return null;
+  }
+
+  // Si la suscripción está ACTIVA y tiene más de 7 días restantes, solo muestra confirmación breve si acaba de pagar
+  if (subState.status === 'ACTIVA' && subState.daysLeft > 7 && !subState.lastInvoice) {
+    return null;
+  }
+
+  const esVencido = subState.daysLeft <= 0 || subState.status === 'SUSPENDIDA' || subState.status === 'PAST_DUE';
+  const esRecienRenovado = subState.status === 'ACTIVA' && Boolean(subState.lastInvoice);
+
+  const handleOpenModal = () => {
+    if (typeof onOpenCheckoutModal === 'function') {
+      onOpenCheckoutModal();
     } else {
-      setEstadoInfo(null);
+      window.dispatchEvent(new CustomEvent('heis:open-checkout'));
     }
-  }, [empresa, user?.rol]);
-
-  if (!estadoInfo || dismissed) return null;
-
-  const esGracia = estadoInfo.tipo === 'EN_GRACIA';
+  };
 
   return (
     <div
-      className={`mx-3 mt-2 px-4 py-2.5 rounded-2xl border flex items-center justify-between gap-3 text-xs shadow-sm ${
-        esGracia
-          ? 'bg-rose-500/15 border-rose-500/40 text-rose-800 dark:text-rose-200'
-          : 'bg-amber-500/15 border-amber-500/40 text-amber-900 dark:text-amber-200'
+      className={`px-4 py-2 text-xs flex flex-wrap items-center justify-between gap-2 border-b transition-all ${
+        esRecienRenovado
+          ? 'bg-emerald-950/80 border-emerald-500/30 text-emerald-200'
+          : esVencido
+          ? 'bg-rose-950/90 border-rose-500/40 text-rose-200'
+          : 'bg-indigo-950/80 border-indigo-500/30 text-indigo-200'
       }`}
     >
-      <div className="flex items-center gap-2.5 min-w-0">
-        {esGracia ? (
-          <ShieldAlert className="w-4 h-4 text-rose-500 shrink-0 animate-pulse" />
+      <div className="flex items-center gap-2">
+        {esRecienRenovado ? (
+          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+        ) : esVencido ? (
+          <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
         ) : (
-          <Clock className="w-4 h-4 text-amber-500 shrink-0" />
+          <Sparkles className="w-4 h-4 text-indigo-400 shrink-0" />
         )}
-        <p className="font-semibold truncate">
-          {esGracia ? (
+
+        <span>
+          {esRecienRenovado ? (
             <>
-              <strong className="font-black uppercase">Período de Gracia Activo:</strong> Su membresía HEIS Suite venció el{' '}
-              <span className="font-mono font-bold">{estadoInfo.fecha}</span>. Restan{' '}
-              <span className="font-black underline">{estadoInfo.diasGracia} día(s)</span> antes de la suspensión automática del servicio.
+              Suscripción <strong>Plan {subState.plan} ACTIVA</strong> ({subState.daysLeft} días). Factura SUNAT emitida:{' '}
+              <strong className="font-mono">{subState.lastInvoice}</strong>
+            </>
+          ) : esVencido ? (
+            <>
+              Tu periodo de prueba o suscripción del <strong>Plan {subState.plan}</strong> ha vencido. Activa tu plan para habilitar ventas y emisión SUNAT.
             </>
           ) : (
             <>
-              <strong className="font-black uppercase">Aviso de Renovación:</strong> Su suscripción empresarial vence{' '}
-              {estadoInfo.dias === 0 ? 'el día de hoy' : `en ${estadoInfo.dias} día(s)`} ({estadoInfo.fecha}).
+              Estás en modo <strong>{subState.status}</strong> del{' '}
+              <strong>Plan {subState.plan}</strong>: te quedan{' '}
+              <strong>{subState.daysLeft} días</strong> disponibles.
             </>
           )}
-        </p>
+        </span>
       </div>
 
-      <div className="flex items-center gap-2 shrink-0">
+      {!esRecienRenovado && (
         <button
           type="button"
-          onClick={() => window.dispatchEvent(new CustomEvent('heis:open-soporte'))}
-          className={`px-3 py-1 rounded-xl font-black text-[11px] cursor-pointer transition-all ${
-            esGracia
-              ? 'bg-rose-600 hover:bg-rose-700 text-white'
-              : 'bg-amber-500 hover:bg-amber-600 text-slate-950'
-          }`}
+          onClick={handleOpenModal}
+          className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white font-semibold transition cursor-pointer"
         >
-          Renovar Ahora
+          <CreditCard className="w-3.5 h-3.5" />
+          {esVencido ? 'Reactivar Ahora' : 'Mejorar / Renovar Plan'}
         </button>
-        {!esGracia && (
-          <button
-            type="button"
-            onClick={() => setDismissed(true)}
-            className="p-1 rounded-lg hover:bg-black/10 dark:hover:bg-white/10"
-            title="Ocultar aviso por hoy"
-          >
-            <X className="w-3.5 h-3.5" />
-          </button>
-        )}
-      </div>
+      )}
     </div>
   );
 }

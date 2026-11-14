@@ -27,6 +27,7 @@ import {
   dispararEnvioInmediatoWorkerSunat,
 } from '../services/saasBillingIssuer.service.js';
 import { emitToTenantSucursal } from '../services/realtime.service.js';
+import { invalidateEmpresaCache } from '../context/tenantContext.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'heis_suite_super_secure_jwt_token_key_2026_enterprise_saas';
 
@@ -580,11 +581,171 @@ export async function forzarBarridoMoraSaaS(req, res) {
   }
 }
 
+/**
+ * 4. POST /api/suscripciones/checkout
+ * Procesa el pago directo/renovación desde el modal frontend con emisión UBL 2.1 y notificación en tiempo real
+ */
+export const procesarCheckoutDirecto = async (req, res, next) => {
+  try {
+    const empresaId = req.user?.empresa_id || req.body?.empresa_id;
+    if (!empresaId) {
+      return res.status(400).json({
+        ok: false,
+        code: 'EMPRESA_ID_REQUIRED',
+        message: 'No se pudo identificar la empresa para el checkout.',
+      });
+    }
+
+    const {
+      plan_codigo = 'PRO',
+      periodo = 'MENSUAL',
+      metodo_pago = 'TARJETA',
+      pasarela = 'IZIPAY',
+      monto,
+      detalles_pago = {},
+    } = req.body;
+
+    const planUpper = String(plan_codigo).toUpperCase();
+    const periodoUpper = String(periodo).toUpperCase();
+    const pasarelaUpper = String(pasarela).toUpperCase();
+    const txId =
+      detalles_pago?.codigoAprobacion ||
+      detalles_pago?.numeroOperacion ||
+      `CHK-${Date.now()}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
+
+    const resultado = await sequelize.transaction(
+      { isolationLevel: Transaction.ISOLATION_LEVELS.READ_COMMITTED },
+      async (t) => {
+        const empresaCliente = await Empresa.findOne({
+          where: { id: empresaId },
+          lock: t.LOCK.UPDATE,
+          skipTenantScope: true,
+          transaction: t,
+        });
+
+        if (!empresaCliente) {
+          throw new Error(`Empresa ID ${empresaId} no encontrada.`);
+        }
+
+        const plan = await PlanSaaS.findOne({
+          where: { codigo: planUpper },
+          skipTenantScope: true,
+          transaction: t,
+        });
+
+        const montoCobrado =
+          Number(monto) ||
+          (periodoUpper === 'ANUAL'
+            ? plan?.precio_anual || 1990
+            : plan?.precio_mensual || 199);
+
+        const baseDate =
+          empresaCliente.suscripcion_vence_en &&
+          new Date(empresaCliente.suscripcion_vence_en) > new Date()
+            ? new Date(empresaCliente.suscripcion_vence_en)
+            : new Date();
+
+        const nuevoVencimiento = new Date(baseDate);
+        if (periodoUpper === 'ANUAL') {
+          nuevoVencimiento.setFullYear(nuevoVencimiento.getFullYear() + 1);
+        } else {
+          nuevoVencimiento.setMonth(nuevoVencimiento.getMonth() + 1);
+        }
+
+        await empresaCliente.update(
+          {
+            plan_id: plan?.id || empresaCliente.plan_id,
+            plan_codigo: planUpper,
+            estado_suscripcion: 'ACTIVA',
+            activo: true,
+            suscripcion_vence_en: nuevoVencimiento,
+            fecha_vencimiento: nuevoVencimiento.toISOString().slice(0, 10),
+          },
+          { skipTenantScope: true, transaction: t }
+        );
+
+        // Emitir automáticamente la Factura Electrónica UBL 2.1 de GRUPO HEIS S.A.C.
+        const { comprobante } = await emitirFacturaSuscripcionSaaS({
+          empresaCliente,
+          planCodigo: planUpper,
+          periodo: periodoUpper,
+          montoPagado: montoCobrado,
+          pasarela: pasarelaUpper,
+          pasarelaTxId: txId,
+          transaction: t,
+        });
+
+        const nuevoPago = await PagoSuscripcionSaaS.create(
+          {
+            empresa_id: empresaCliente.id,
+            plan_id: plan?.id || planUpper,
+            plan: planUpper,
+            pasarela: pasarelaUpper,
+            pasarela_tx_id: txId,
+            monto: montoCobrado,
+            moneda: 'PEN',
+            periodo: periodoUpper,
+            periodo_meses: periodoUpper === 'ANUAL' ? 12 : 1,
+            estado: 'CONFIRMADO',
+            firma_verificada: true,
+            comprobante_emitido_id: comprobante?.id || null,
+            fecha_pago: new Date(),
+            vigencia_desde: baseDate.toISOString().slice(0, 10),
+            vigencia_hasta: nuevoVencimiento.toISOString().slice(0, 10),
+            observaciones: `Checkout Directo (${metodo_pago} / ${pasarelaUpper}) - Ref: ${txId}`,
+          },
+          { skipTenantScope: true, transaction: t }
+        );
+
+        return {
+          empresaId: empresaCliente.id,
+          nuevoVencimiento,
+          pago: nuevoPago,
+          comprobante,
+        };
+      }
+    );
+
+    invalidateEmpresaCache(resultado.empresaId);
+    dispararEnvioInmediatoWorkerSunat();
+
+    const payloadRenovacion = {
+      plan_codigo: planUpper,
+      estado_suscripcion: 'ACTIVA',
+      suscripcion_vence_en: resultado.nuevoVencimiento.toISOString(),
+      factura_heis: resultado.comprobante
+        ? `${resultado.comprobante.serie}-${String(resultado.comprobante.correlativo).padStart(8, '0')}`
+        : 'F001-00000001',
+    };
+
+    emitToTenantSucursal(resultado.empresaId, null, 'suscripcion:renovada', payloadRenovacion);
+
+    return res.status(200).json({
+      ok: true,
+      success: true,
+      data: {
+        nuevoVencimiento: resultado.nuevoVencimiento.toISOString(),
+        factura_heis: payloadRenovacion.factura_heis,
+        comprobante: resultado.comprobante,
+        pago: resultado.pago,
+      },
+    });
+  } catch (error) {
+    console.error('Error en procesarCheckoutDirecto:', error);
+    return res.status(500).json({
+      ok: false,
+      code: 'CHECKOUT_PROCESSING_ERROR',
+      message: error.message || 'Error al procesar el pago de suscripción.',
+    });
+  }
+};
+
 export default {
   validarRucSunatModulo11,
   normalizarEventoPasarela,
   procesarWebhookPasarela,
   registrarOnboardingTrial,
+  procesarCheckoutDirecto,
   obtenerEstadoSuscripcionActual,
   listarCarteraCobranzasSaaS,
   renovarSuscripcionEmpresa,

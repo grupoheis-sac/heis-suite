@@ -43,6 +43,11 @@ export function useRealtime(onEventCallback = null) {
               );
               if (typeof callbackRef.current === 'function') {
                 callbackRef.current(parsed.event, parsed.data, parsed);
+              } else if (callbackRef.current && typeof callbackRef.current === 'object') {
+                const handler = callbackRef.current[parsed.event];
+                if (typeof handler === 'function') {
+                  handler(parsed.data, parsed);
+                }
               }
             }
           } catch (_) {}

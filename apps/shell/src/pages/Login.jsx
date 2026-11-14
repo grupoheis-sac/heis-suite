@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useAuthStore, api, getRoleLandingRoute } from '@heis/core';
 import toast from 'react-hot-toast';
 import {
@@ -466,6 +466,16 @@ export default function Login() {
                     </>
                   )}
                 </button>
+
+                <div className="mt-3 text-center">
+                  <Link
+                    to="/registro"
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-500 hover:text-amber-400 hover:underline transition"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                    ¿Nuevo en HEIS Suite? Prueba 14 días gratis
+                  </Link>
+                </div>
               </form>
             </div>
 
