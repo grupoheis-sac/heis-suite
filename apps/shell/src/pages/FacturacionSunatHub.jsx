@@ -16,7 +16,11 @@ import {
   Calendar,
   Wallet,
   Boxes,
-  X
+  X,
+  ChevronLeft,
+  ChevronRight,
+  Ban,
+  Loader2,
 } from 'lucide-react';
 
 export default function FacturacionSunatHub() {
@@ -32,6 +36,13 @@ export default function FacturacionSunatHub() {
   });
   const [loading, setLoading] = useState(true);
 
+  // Paginación Servidor
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(20);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalRegistros, setTotalRegistros] = useState(0);
+
+  // Filtros Avanzados
   const [periodoContable, setPeriodoContable] = useState(() =>
     new Date().toISOString().slice(0, 7)
   );
@@ -39,7 +50,11 @@ export default function FacturacionSunatHub() {
 
   const [filtroModulo, setFiltroModulo] = useState('TODOS');
   const [filtroTipo, setFiltroTipo] = useState('TODOS');
+  const [filtroEstado, setFiltroEstado] = useState('TODOS');
+  const [fechaInicio, setFechaInicio] = useState('');
+  const [fechaFin, setFechaFin] = useState('');
   const [busqueda, setBusqueda] = useState('');
+  const [procesandoId, setProcesandoId] = useState(null);
 
   const [modalEmitir, setModalEmitir] = useState(false);
   const [emitiendo, setEmitiendo] = useState(false);
@@ -60,13 +75,20 @@ export default function FacturacionSunatHub() {
       setLoading(true);
       const res = await api.get('/core/facturacion/comprobantes', {
         params: {
-          origen_modulo: filtroModulo,
-          tipo_comprobante: filtroTipo,
-          search: busqueda || undefined,
+          page,
+          limit,
+          origen_modulo: filtroModulo !== 'TODOS' ? filtroModulo : undefined,
+          tipo_comprobante: filtroTipo !== 'TODOS' ? filtroTipo : undefined,
+          estadoSunat: filtroEstado !== 'TODOS' ? filtroEstado : undefined,
+          fechaInicio: fechaInicio || undefined,
+          fechaFin: fechaFin || undefined,
+          search: busqueda.trim() || undefined,
         },
       });
       if (res.data?.success) {
         setComprobantes(res.data.data || []);
+        setTotalRegistros(res.data.total ?? (res.data.data?.length || 0));
+        setTotalPages(res.data.totalPages || 1);
         if (res.data.resumen) setResumen(res.data.resumen);
       }
     } catch (error) {
@@ -78,18 +100,7 @@ export default function FacturacionSunatHub() {
 
   useEffect(() => {
     cargarComprobantes();
-  }, [filtroModulo, filtroTipo]);
-
-  const comprobantesFiltrados = useMemo(() => {
-    if (!busqueda.trim()) return comprobantes;
-    const q = busqueda.toLowerCase().trim();
-    return comprobantes.filter(
-      (c) =>
-        c.numero_formato?.toLowerCase().includes(q) ||
-        c.cliente_razon_social?.toLowerCase().includes(q) ||
-        c.cliente_num_doc?.toLowerCase().includes(q)
-    );
-  }, [comprobantes, busqueda]);
+  }, [page, limit, filtroModulo, filtroTipo, filtroEstado, fechaInicio, fechaFin]);
 
   const handleDescargarLibroContable = async (endpoint, defaultFilename, label) => {
     try {
@@ -151,6 +162,8 @@ export default function FacturacionSunatHub() {
 
   const handleEmitirDirecto = async (e) => {
     e.preventDefault();
+    if (emitiendo) return;
+
     const precio = parseFloat(nuevoCpe.precio_unitario);
     if (!precio || precio <= 0) {
       toast.error('Ingrese un importe válido mayor a S/ 0.00');
@@ -198,6 +211,7 @@ export default function FacturacionSunatHub() {
   };
 
   const handleEmitirNotaCredito = async (cpe) => {
+    if (procesandoId) return;
     const motivo = window.prompt(
       `Emitir Nota de Crédito Electrónica (07) para anular ${cpe.numero_formato}.\nIngrese el motivo de sustento SUNAT:`,
       'Anulación de la operación'
@@ -205,6 +219,7 @@ export default function FacturacionSunatHub() {
     if (!motivo) return;
 
     try {
+      setProcesandoId(cpe.id);
       const res = await api.post(`/core/facturacion/comprobantes/${cpe.id}/nota-credito`, {
         motivo,
       });
@@ -214,11 +229,39 @@ export default function FacturacionSunatHub() {
       }
     } catch (error) {
       toast.error(error.response?.data?.error || 'Error al emitir Nota de Crédito');
+    } finally {
+      setProcesandoId(null);
+    }
+  };
+
+  const handleComunicarBaja = async (cpe) => {
+    if (procesandoId) return;
+    const motivo = window.prompt(
+      `Comunicar Baja ante SUNAT para ${cpe.numero_formato}.\n(Válido dentro de los primeros 7 días calendario):\nIngrese el motivo de baja:`,
+      'Error en la emisión del comprobante'
+    );
+    if (!motivo) return;
+
+    try {
+      setProcesandoId(cpe.id);
+      const res = await api.post(`/core/facturacion/comprobantes/${cpe.id}/comunicar-baja`, {
+        motivo,
+      });
+      if (res.data?.success) {
+        toast.success(res.data.message || 'Baja comunicada a SUNAT con éxito');
+        cargarComprobantes();
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'No se pudo comunicar la baja ante SUNAT');
+    } finally {
+      setProcesandoId(null);
     }
   };
 
   const handleDescargarArchivo = async (id, tipo, numeroFormato) => {
+    if (procesandoId) return;
     try {
+      setProcesandoId(`${id}-${tipo}`);
       const res = await api.get(`/core/facturacion/comprobantes/${id}/${tipo}`, {
         responseType: 'blob',
       });
@@ -233,6 +276,8 @@ export default function FacturacionSunatHub() {
       toast.success(`Archivo ${tipo.toUpperCase()} descargado`);
     } catch (error) {
       toast.error(`No se pudo descargar el ${tipo.toUpperCase()}`);
+    } finally {
+      setProcesandoId(null);
     }
   };
 
@@ -399,23 +444,55 @@ export default function FacturacionSunatHub() {
         </div>
       </div>
 
-      {/* Filtros */}
-      <div className="p-4 rounded-3xl bg-white dark:bg-[#0d1527] border border-slate-200/80 dark:border-white/10 flex flex-col sm:flex-row gap-3 items-center justify-between">
-        <div className="relative w-full sm:w-80">
+      {/* Filtros Servidor */}
+      <div className="p-4 rounded-3xl bg-white dark:bg-[#0d1527] border border-slate-200/80 dark:border-white/10 flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
+        <div className="relative w-full md:w-72">
           <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             value={busqueda}
-            onChange={(e) => setBusqueda(e.target.value)}
-            placeholder="Buscar serie F001/B001, RUC, DNI o cliente..."
+            onChange={(e) => {
+              setBusqueda(e.target.value);
+              setPage(1);
+            }}
+            placeholder="Buscar serie, RUC o cliente..."
             className="w-full pl-9 pr-4 py-2 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-xs focus:outline-none"
           />
         </div>
 
-        <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1 text-xs bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 px-2.5 py-1.5 rounded-2xl">
+            <span className="text-[10px] text-slate-400 font-bold uppercase">Desde:</span>
+            <input
+              type="date"
+              value={fechaInicio}
+              onChange={(e) => {
+                setFechaInicio(e.target.value);
+                setPage(1);
+              }}
+              className="bg-transparent text-slate-700 dark:text-slate-200 text-xs focus:outline-none font-mono"
+            />
+          </div>
+
+          <div className="flex items-center gap-1 text-xs bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 px-2.5 py-1.5 rounded-2xl">
+            <span className="text-[10px] text-slate-400 font-bold uppercase">Hasta:</span>
+            <input
+              type="date"
+              value={fechaFin}
+              onChange={(e) => {
+                setFechaFin(e.target.value);
+                setPage(1);
+              }}
+              className="bg-transparent text-slate-700 dark:text-slate-200 text-xs focus:outline-none font-mono"
+            />
+          </div>
+
           <select
             value={filtroModulo}
-            onChange={(e) => setFiltroModulo(e.target.value)}
+            onChange={(e) => {
+              setFiltroModulo(e.target.value);
+              setPage(1);
+            }}
             className="px-3 py-2 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-xs font-semibold"
           >
             <option value="TODOS">Todos los Módulos</option>
@@ -428,7 +505,10 @@ export default function FacturacionSunatHub() {
 
           <select
             value={filtroTipo}
-            onChange={(e) => setFiltroTipo(e.target.value)}
+            onChange={(e) => {
+              setFiltroTipo(e.target.value);
+              setPage(1);
+            }}
             className="px-3 py-2 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-xs font-semibold"
           >
             <option value="TODOS">Todos los Tipos</option>
@@ -436,10 +516,24 @@ export default function FacturacionSunatHub() {
             <option value="Boleta">Boletas (03)</option>
             <option value="NotaCredito">Notas de Crédito (07)</option>
           </select>
+
+          <select
+            value={filtroEstado}
+            onChange={(e) => {
+              setFiltroEstado(e.target.value);
+              setPage(1);
+            }}
+            className="px-3 py-2 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-xs font-semibold"
+          >
+            <option value="TODOS">Todos los Estados</option>
+            <option value="ACEPTADO">ACEPTADO</option>
+            <option value="RECHAZADO">RECHAZADO</option>
+            <option value="ANULADO">ANULADO</option>
+          </select>
         </div>
       </div>
 
-      {/* Tabla de Comprobantes */}
+      {/* Tabla de Comprobantes con Paginación Servidor */}
       <div className="rounded-3xl bg-white dark:bg-[#0d1527] border border-slate-200/80 dark:border-white/10 overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
@@ -459,17 +553,20 @@ export default function FacturacionSunatHub() {
               {loading ? (
                 <tr>
                   <td colSpan={8} className="py-12 text-center text-slate-400 font-semibold">
-                    Cargando comprobantes electrónicos UBL 2.1...
+                    <div className="flex items-center justify-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin text-emerald-500" />
+                      <span>Cargando comprobantes electrónicos UBL 2.1...</span>
+                    </div>
                   </td>
                 </tr>
-              ) : comprobantesFiltrados.length === 0 ? (
+              ) : comprobantes.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="py-12 text-center text-slate-400 font-semibold">
                     No se encontraron comprobantes electrónicos registrados.
                   </td>
                 </tr>
               ) : (
-                comprobantesFiltrados.map((c) => (
+                comprobantes.map((c) => (
                   <tr key={c.id} className="hover:bg-slate-50/80 dark:hover:bg-white/[0.02] transition-colors">
                     <td className="py-3 px-4">
                       <div className="font-black text-slate-900 dark:text-white font-mono">
@@ -511,6 +608,8 @@ export default function FacturacionSunatHub() {
                         className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase ${
                           c.sunat_estado === 'ACEPTADO'
                             ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                            : c.sunat_estado === 'ANULADO'
+                            ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20'
                             : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20'
                         }`}
                       >
@@ -525,30 +624,48 @@ export default function FacturacionSunatHub() {
                     <td className="py-3 px-4 text-right">
                       <div className="inline-flex items-center gap-1.5">
                         <button
+                          type="button"
+                          disabled={Boolean(procesandoId)}
                           onClick={() => handleDescargarArchivo(c.id, 'xml', c.numero_formato)}
-                          className="px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-[11px] font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1 cursor-pointer"
+                          className="px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-[11px] font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1 cursor-pointer disabled:opacity-40"
                           title="Descargar XML UBL 2.1 Firmado"
                         >
                           <Code2 className="w-3.5 h-3.5 text-indigo-500" />
                           <span>XML</span>
                         </button>
                         <button
+                          type="button"
+                          disabled={Boolean(procesandoId)}
                           onClick={() => handleDescargarArchivo(c.id, 'cdr', c.numero_formato)}
-                          className="px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-[11px] font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1 cursor-pointer"
+                          className="px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-[11px] font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1 cursor-pointer disabled:opacity-40"
                           title="Descargar Constancia de Recepción CDR SUNAT"
                         >
                           <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
                           <span>CDR</span>
                         </button>
                         {c.sunat_estado === 'ACEPTADO' && c.tipo_comprobante !== 'NotaCredito' && (
-                          <button
-                            onClick={() => handleEmitirNotaCredito(c)}
-                            className="px-2.5 py-1 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-[11px] font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1 cursor-pointer"
-                            title="Emitir Nota de Crédito Electrónica (07)"
-                          >
-                            <RotateCcw className="w-3.5 h-3.5" />
-                            <span>NC</span>
-                          </button>
+                          <>
+                            <button
+                              type="button"
+                              disabled={Boolean(procesandoId)}
+                              onClick={() => handleEmitirNotaCredito(c)}
+                              className="px-2.5 py-1 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-[11px] font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1 cursor-pointer disabled:opacity-40"
+                              title="Emitir Nota de Crédito Electrónica (07)"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" />
+                              <span>NC</span>
+                            </button>
+                            <button
+                              type="button"
+                              disabled={Boolean(procesandoId)}
+                              onClick={() => handleComunicarBaja(c)}
+                              className="px-2.5 py-1 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-[11px] font-bold text-rose-600 dark:text-rose-400 flex items-center gap-1 cursor-pointer disabled:opacity-40"
+                              title="Comunicar Baja a SUNAT (Primeros 7 días)"
+                            >
+                              <Ban className="w-3.5 h-3.5" />
+                              <span>Baja</span>
+                            </button>
+                          </>
                         )}
                       </div>
                     </td>
@@ -557,6 +674,45 @@ export default function FacturacionSunatHub() {
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Paginación Servidor */}
+        <div className="p-4 border-t border-slate-200/70 dark:border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs bg-slate-50/50 dark:bg-white/[0.01]">
+          <div className="text-slate-500 dark:text-slate-400 font-semibold">
+            Mostrando {comprobantes.length > 0 ? (page - 1) * limit + 1 : 0} a{' '}
+            {Math.min(page * limit, totalRegistros)} de {totalRegistros} comprobantes (Página {page} de {totalPages})
+          </div>
+          <div className="flex items-center gap-2">
+            <select
+              value={limit}
+              onChange={(e) => {
+                setLimit(Number(e.target.value));
+                setPage(1);
+              }}
+              className="px-2.5 py-1.5 rounded-xl bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 text-xs font-bold"
+            >
+              <option value={10}>10 / pág</option>
+              <option value={20}>20 / pág</option>
+              <option value={50}>50 / pág</option>
+              <option value={100}>100 / pág</option>
+            </select>
+            <button
+              type="button"
+              disabled={page <= 1 || loading}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              className="px-3 py-1.5 rounded-xl bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 font-bold hover:bg-slate-100 dark:hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
+            >
+              Anterior
+            </button>
+            <button
+              type="button"
+              disabled={page >= totalPages || loading}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              className="px-3 py-1.5 rounded-xl bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 font-bold hover:bg-slate-100 dark:hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
+            >
+              Siguiente
+            </button>
+          </div>
         </div>
       </div>
 

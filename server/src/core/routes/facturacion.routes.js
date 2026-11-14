@@ -5,6 +5,7 @@ import {
   listarComprobantes,
   emitirComprobante,
   emitirNotaCredito,
+  comunicarBaja,
   descargarXmlComprobante,
   descargarCdrComprobante,
 } from '../controllers/facturacion.controller.js';
@@ -24,6 +25,7 @@ router.use(verifyJWT, tenantContext);
 router.get('/comprobantes', listarComprobantes);
 router.post('/emitir', emitirComprobante);
 router.post('/comprobantes/:id/nota-credito', emitirNotaCredito);
+router.post('/comprobantes/:id/comunicar-baja', comunicarBaja);
 router.get('/comprobantes/:id/xml', descargarXmlComprobante);
 router.get('/comprobantes/:id/cdr', descargarCdrComprobante);
 

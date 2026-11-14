@@ -37,6 +37,8 @@ router.post('/cargos', cargosController.agregarCargo);
 // ================= FACTURACIÓN HOTELERA =================
 router.get('/facturas', facturasController.getFacturas);
 router.post('/facturas', facturasController.crearFactura);
+router.get('/facturas/:id', facturasController.getFacturaPorId);
+router.post('/facturas/:id/nota-credito', facturasController.emitirNotaCredito);
 
 // ================= CATÁLOGO DE PRODUCTOS / MINIBAR =================
 router.get('/catalogo', catalogoController.getProductos);

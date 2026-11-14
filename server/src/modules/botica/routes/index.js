@@ -45,6 +45,9 @@ router.get('/caja/historial', cajaController.getHistorialCajas);
 
 // ================= KARDEX FARMACÉUTICO 13.1 =================
 router.get('/kardex', kardexController.getKardex);
+router.get('/kardex/valorizado', kardexController.getKardexValorizado);
+router.get('/kardex/exportar-sunat', kardexController.exportarKardexSunat);
+router.get('/kardex/libro-recetas', kardexController.getLibroRecetas);
 router.get('/inventario/resumen', kardexController.getResumen);
 
 // ================= CONTROL TEMPERATURA Y HUMEDAD BPA =================

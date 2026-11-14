@@ -160,15 +160,16 @@ export const ComprobanteElectronico = sequelize.define('ComprobanteElectronico',
   },
 }, {
   tableName: 'core_comprobantes_electronicos',
+  timestamps: true,
   indexes: [
     {
-      name: 'idx_cpe_tenant_serie_corr',
       unique: true,
-      fields: ['empresa_id', 'serie', 'correlativo'],
+      name: 'idx_unique_comprobante_tenant',
+      fields: ['empresa_id', 'tipo_comprobante', 'serie', 'correlativo'],
     },
     {
-      name: 'idx_cpe_tenant_fecha',
-      fields: ['empresa_id', 'fecha_emision'],
+      name: 'idx_comprobante_fecha_estado',
+      fields: ['empresa_id', 'fecha_emision', 'sunat_estado'],
     },
     {
       name: 'idx_cpe_origen',

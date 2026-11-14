@@ -73,12 +73,43 @@ export const Empresa = sequelize.define('Empresa', {
     type: DataTypes.STRING(255),
     allowNull: true,
   },
+  sunat_clave_sol: {
+    type: DataTypes.STRING(100),
+    allowNull: true,
+  },
+  sunat_certificado_password: {
+    type: DataTypes.STRING(100),
+    allowNull: true,
+  },
+  sunat_certificado_base64: {
+    type: DataTypes.TEXT('long'),
+    allowNull: true,
+  },
+  sunat_token_ose: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+  },
   activo: {
     type: DataTypes.BOOLEAN,
     defaultValue: true,
   },
 }, {
   tableName: 'empresas',
+  defaultScope: {
+    attributes: {
+      exclude: [
+        'sunat_clave_sol',
+        'sunat_certificado_password',
+        'sunat_certificado_base64',
+        'sunat_token_ose',
+      ],
+    },
+  },
+  scopes: {
+    withSunatSecrets: {
+      attributes: { include: [] },
+    },
+  },
 });
 
 export default Empresa;

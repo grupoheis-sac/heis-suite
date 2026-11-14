@@ -138,6 +138,15 @@ export const crearVenta = async (req, res, next) => {
       id_caja = cajaAbierta.id;
     }
 
+    // Obtener datos del cliente si fue proporcionado
+    let clienteRow = null;
+    if (id_cliente) {
+      clienteRow = await Cliente.findOne({
+        where: { id: id_cliente, empresa_id: req.empresa_id },
+        transaction: t,
+      });
+    }
+
     // Calcular totales y descontar stock
     let subtotalCalculado = 0;
     const itemsProcesados = [];
@@ -158,6 +167,26 @@ export const crearVenta = async (req, res, next) => {
 
       const cant = parseFloat(it.cantidad) || 1;
       const stockActual = parseFloat(prod.stock) || 0;
+
+      // Validación SUNAT IQBF / SUCAMEC: Insumos Químicos y Bienes Fiscalizados
+      const esIqbf = Boolean(
+        prod.es_fiscalizado ||
+        prod.es_iqbf ||
+        prod.tipo_fiscalizacion === 'SUNAT_IQBF' ||
+        prod.tipo_fiscalizacion === 'SUCAMEC' ||
+        prod.codigo_iqbf
+      );
+
+      if (esIqbf) {
+        const docCliente = (clienteRow?.numero_documento || req.body.cliente_documento || '').trim();
+        if (!docCliente || docCliente === '00000000' || docCliente === '0' || docCliente.length < 8) {
+          await t.rollback();
+          return res.status(400).json({
+            success: false,
+            message: `El producto "${prod.nombre}" es un Insumo Químico o Bien Fiscalizado (SUNAT IQBF / SUCAMEC). Es obligatorio registrar un cliente identificado con DNI (8 dígitos) o RUC (11 dígitos). No se permite la venta a Clientes Varios (00000000).`,
+          });
+        }
+      }
 
       if (stockActual < cant) {
         await t.rollback();
@@ -270,8 +299,8 @@ export const crearVenta = async (req, res, next) => {
           origenId: nuevaVenta.id,
           tipoComprobante: tipo_comprobante,
           seriePreferida: serie,
-          clienteDocumento: clienteRow ? clienteRow.numero_documento : '00000000',
-          clienteNombre: clienteRow ? clienteRow.razon_social : 'CLIENTE VARIOS',
+          clienteDocumento: clienteRow ? clienteRow.numero_documento : (req.body.cliente_documento || '00000000'),
+          clienteNombre: clienteRow ? (clienteRow.nombre || clienteRow.razon_social) : (req.body.cliente_nombre || 'CLIENTE VARIOS'),
           clienteDireccion: clienteRow ? clienteRow.direccion : '',
           descuentoGlobal: desc,
           items: itemsProcesados.map((it) => ({

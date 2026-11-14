@@ -2,14 +2,157 @@ import crypto from 'node:crypto';
 import sequelize from '../../config/db.js';
 import { ComprobanteElectronico, Empresa, Sucursal } from '../models/index.js';
 
-function escapeXml(str) {
-  if (str === null || str === undefined) return '';
-  return String(str)
+/**
+ * Escapa caracteres reservados XML para evitar rechazo de esquema UBL 2.1 e inyección XML
+ */
+export function escapeXml(unsafe) {
+  if (unsafe === null || unsafe === undefined) return '';
+  return String(unsafe)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
+    .replace(/'/g, '&apos;')
+    .trim();
+}
+
+/**
+ * Redondeo seguro a N decimales evitando errores de punto flotante IEEE 754
+ */
+export function roundMoney(num, decimals = 2) {
+  const factor = Math.pow(10, decimals);
+  return Math.round((Number(num) + Number.EPSILON) * factor) / factor;
+}
+
+/**
+ * Valida reglas obligatorias de SUNAT antes de construir el XML UBL 2.1
+ */
+export function validarReglasSunat({ tipoComprobante, serie, cliente, total, items }) {
+  if (!Array.isArray(items) || items.length === 0) {
+    throw new Error('El comprobante debe contener al menos un ítem válido.');
+  }
+
+  // 1. Validación Factura (01)
+  if (tipoComprobante === '01' || tipoComprobante === 'Factura') {
+    if (!serie.startsWith('F')) {
+      throw new Error('Las Facturas Electrónicas (01) deben utilizar una serie que inicie con la letra F.');
+    }
+    const ruc = String(cliente?.numero_documento || cliente?.num_doc || '').trim();
+    const tipoDoc = String(cliente?.tipo_documento || cliente?.tipo_doc || '');
+    if ((tipoDoc !== '6' && tipoDoc !== 'RUC') || !/^(10|15|17|20)\d{9}$/.test(ruc)) {
+      throw new Error('Para emitir Factura Electrónica es obligatorio un RUC válido de 11 dígitos (Catálogo 06: código 6).');
+    }
+  }
+
+  // 2. Validación Boleta de Venta (03) >= S/ 700.00
+  if (tipoComprobante === '03' || tipoComprobante === 'Boleta') {
+    if (!serie.startsWith('B')) {
+      throw new Error('Las Boletas de Venta (03) deben utilizar una serie que inicie con la letra B.');
+    }
+    const docCliente = String(cliente?.numero_documento || cliente?.num_doc || '').trim();
+    const tipoDoc = String(cliente?.tipo_documento || cliente?.tipo_doc || '');
+    if (Number(total) >= 700 && (!docCliente || docCliente === '00000000' || tipoDoc === '0')) {
+      throw new Error('Normativa SUNAT: Toda Boleta de Venta igual o mayor a S/ 700.00 requiere identificar el DNI/CE del cliente.');
+    }
+  }
+}
+
+/**
+ * Calcula los subtotales de línea y totales del documento bajo estándar UBL 2.1 Perú
+ * @param {Array} items - Lista de productos con { cantidad, precio_unitario, tipo_afectacion_igv ('10'=Gravado, '20'=Exonerado, '30'=Inafecto) }
+ * @param {Number} igvPorcentaje - Por defecto 18 (18%)
+ */
+export function calcularTotalesUbl(items, igvPorcentaje = 18) {
+  const tasa = igvPorcentaje / 100;
+  let opGravadas = 0;
+  let opExoneradas = 0;
+  let opInafectas = 0;
+  let totalIgv = 0;
+
+  const itemsCalculados = items.map((item, idx) => {
+    const cantidad = Number(item.cantidad || item.quantity || 1);
+    const precioConIgv = Number(item.precio_unitario || item.precio_venta || item.price || 0);
+    const afectacion = String(item.tipo_afectacion_igv || '10'); // Catálogo 07 SUNAT
+
+    let valorUnitarioSinIgv = precioConIgv;
+    let igvLinea = 0;
+    let valorVentaLinea = 0;
+    const totalLinea = roundMoney(cantidad * precioConIgv, 2);
+
+    if (afectacion === '10') {
+      // Operación Gravada - Onerosa
+      valorUnitarioSinIgv = roundMoney(precioConIgv / (1 + tasa), 6); // Hasta 6 decimales en Valor Unitario UBL
+      valorVentaLinea = roundMoney(totalLinea / (1 + tasa), 2);
+      igvLinea = roundMoney(totalLinea - valorVentaLinea, 2);
+      opGravadas = roundMoney(opGravadas + valorVentaLinea, 2);
+      totalIgv = roundMoney(totalIgv + igvLinea, 2);
+    } else if (afectacion === '20') {
+      // Operación Exonerada
+      valorUnitarioSinIgv = roundMoney(precioConIgv, 6);
+      valorVentaLinea = totalLinea;
+      opExoneradas = roundMoney(opExoneradas + valorVentaLinea, 2);
+    } else {
+      // Operación Inafecta ('30')
+      valorUnitarioSinIgv = roundMoney(precioConIgv, 6);
+      valorVentaLinea = totalLinea;
+      opInafectas = roundMoney(opInafectas + valorVentaLinea, 2);
+    }
+
+    return {
+      ...item,
+      numero_orden: idx + 1,
+      descripcion_sanitizada: escapeXml(item.descripcion || item.nombre || item.name || 'ÍTEM'),
+      codigo_producto: escapeXml(item.codigo || `ITEM-${idx + 1}`),
+      unidad_medida: item.unidad_medida || 'NIU',
+      tipo_afectacion_igv: afectacion,
+      valor_unitario: valorUnitarioSinIgv,
+      precio_referencia: roundMoney(precioConIgv, 2),
+      valor_venta_linea: valorVentaLinea,
+      igv_linea: igvLinea,
+      total_linea: totalLinea,
+      cantidad,
+      precio_unitario: precioConIgv,
+      subtotal: totalLinea,
+    };
+  });
+
+  const importeTotal = roundMoney(opGravadas + opExoneradas + opInafectas + totalIgv, 2);
+
+  return {
+    items: itemsCalculados,
+    opGravadas,
+    opExoneradas,
+    opInafectas,
+    totalIgv,
+    importeTotal,
+  };
+}
+
+/**
+ * Obtiene el siguiente correlativo serializado con bloqueo de fila pesimista
+ */
+export async function obtenerSiguienteCorrelativo({ empresaId, sucursalId, tipoComprobante, serie }, transaction) {
+  const where = {
+    empresa_id: empresaId,
+    serie,
+  };
+  if (tipoComprobante) {
+    where.tipo_comprobante = tipoComprobante;
+  }
+
+  const ultimo = await ComprobanteElectronico.findOne({
+    where,
+    order: [['correlativo', 'DESC']],
+    lock: transaction?.LOCK?.UPDATE,
+    transaction,
+  });
+
+  const siguienteNumero = ultimo ? Number(ultimo.correlativo) + 1 : 1;
+  return {
+    correlativo: siguienteNumero,
+    correlativoFormateado: String(siguienteNumero).padStart(8, '0'),
+    numeracionCompleta: `${serie}-${String(siguienteNumero).padStart(8, '0')}`,
+  };
 }
 
 export function detectarTipoDocumentoCliente(documento, tipoComprobante) {
@@ -41,11 +184,10 @@ export function construirXmlUbl21({
 
   const lineasXml = items.map((item, idx) => {
     const cantidad = Number(item.cantidad || 1);
-    const precioConIgv = Number(item.precio_unitario || 0);
-    const valorUnitarioSinIgv = Number((precioConIgv / 1.18).toFixed(6));
-    const subtotalConIgv = Number((cantidad * precioConIgv).toFixed(2));
-    const valorVentaLinea = Number((subtotalConIgv / 1.18).toFixed(2));
-    const igvLinea = Number((subtotalConIgv - valorVentaLinea).toFixed(2));
+    const precioConIgv = Number(item.precio_referencia || item.precio_unitario || 0);
+    const valorUnitarioSinIgv = Number(item.valor_unitario || (precioConIgv / 1.18).toFixed(6));
+    const valorVentaLinea = Number(item.valor_venta_linea || (cantidad * valorUnitarioSinIgv).toFixed(2));
+    const igvLinea = Number(item.igv_linea || (item.total_linea - valorVentaLinea).toFixed(2));
     const unidad = item.unidad_medida || 'NIU';
 
     return `
@@ -57,7 +199,7 @@ export function construirXmlUbl21({
       <cac:AlternativeConditionPrice>
         <cbc:PriceAmount currencyID="${comprobante.moneda}">${precioConIgv.toFixed(2)}</cbc:PriceAmount>
         <cbc:PriceTypeCode>01</cbc:PriceTypeCode>
-      </cac:PricingReference>
+      </cac:AlternativeConditionPrice>
     </cac:PricingReference>
     <cac:TaxTotal>
       <cbc:TaxAmount currencyID="${comprobante.moneda}">${igvLinea.toFixed(2)}</cbc:TaxAmount>
@@ -66,7 +208,7 @@ export function construirXmlUbl21({
         <cbc:TaxAmount currencyID="${comprobante.moneda}">${igvLinea.toFixed(2)}</cbc:TaxAmount>
         <cac:TaxCategory>
           <cbc:Percent>18.00</cbc:Percent>
-          <cbc:TaxExemptionReasonCode>10</cbc:TaxExemptionReasonCode>
+          <cbc:TaxExemptionReasonCode>${item.tipo_afectacion_igv || '10'}</cbc:TaxExemptionReasonCode>
           <cac:TaxScheme>
             <cbc:ID>1000</cbc:ID>
             <cbc:Name>IGV</cbc:Name>
@@ -76,7 +218,7 @@ export function construirXmlUbl21({
       </cac:TaxSubtotal>
     </cac:TaxTotal>
     <cac:Item>
-      <cbc:Description><![CDATA[${item.descripcion || 'PRODUCTO / SERVICIO'}]]></cbc:Description>
+      <cbc:Description>${escapeXml(item.descripcion || item.nombre || 'PRODUCTO / SERVICIO')}</cbc:Description>
     </cac:Item>
     <cac:Price>
       <cbc:PriceAmount currencyID="${comprobante.moneda}">${valorUnitarioSinIgv.toFixed(6)}</cbc:PriceAmount>
@@ -110,14 +252,14 @@ export function construirXmlUbl21({
         <cbc:ID schemeID="6">${escapeXml(emisor.ruc)}</cbc:ID>
       </cac:PartyIdentification>
       <cac:PartyName>
-        <cbc:Name><![CDATA[${emisor.nombre}]]></cbc:Name>
+        <cbc:Name>${escapeXml(emisor.nombre)}</cbc:Name>
       </cac:PartyName>
       <cac:PartyLegalEntity>
-        <cbc:RegistrationName><![CDATA[${emisor.nombre}]]></cbc:RegistrationName>
+        <cbc:RegistrationName>${escapeXml(emisor.nombre)}</cbc:RegistrationName>
         <cac:RegistrationAddress>
           <cbc:AddressTypeCode>0000</cbc:AddressTypeCode>
           <cac:AddressLine>
-            <cbc:Line><![CDATA[${emisor.direccion || 'PERU'}]]></cbc:Line>
+            <cbc:Line>${escapeXml(emisor.direccion || 'PERU')}</cbc:Line>
           </cac:AddressLine>
         </cac:RegistrationAddress>
       </cac:PartyLegalEntity>
@@ -129,7 +271,7 @@ export function construirXmlUbl21({
         <cbc:ID schemeID="${cliente.tipo_doc}">${escapeXml(cliente.num_doc)}</cbc:ID>
       </cac:PartyIdentification>
       <cac:PartyLegalEntity>
-        <cbc:RegistrationName><![CDATA[${cliente.razon_social}]]></cbc:RegistrationName>
+        <cbc:RegistrationName>${escapeXml(cliente.razon_social)}</cbc:RegistrationName>
       </cac:PartyLegalEntity>
     </cac:Party>
   </cac:AccountingCustomerParty>
@@ -202,7 +344,10 @@ export async function emitirComprobanteUniversal({
   const t = transaction || (await sequelize.transaction());
 
   try {
-    const empresa = await Empresa.findByPk(empresaId, { transaction: t, skipTenant: true });
+    const empresa = await Empresa.scope('withSunatSecrets').findByPk(empresaId, {
+      transaction: t,
+      skipTenant: true,
+    });
     if (!empresa) {
       throw new Error('Empresa emisora no encontrada');
     }
@@ -230,38 +375,37 @@ export async function emitirComprobanteUniversal({
 
     const serieFinal = (seriePreferida || prefijoSerie).toUpperCase();
 
-    const maxCorrelativo = await ComprobanteElectronico.max('correlativo', {
-      where: {
-        empresa_id: empresaId,
-        serie: serieFinal,
-      },
-      transaction: t,
-    });
-
-    const siguienteCorrelativo = (Number(maxCorrelativo) || 0) + 1;
-    const numeroFormato = `${serieFinal}-${String(siguienteCorrelativo).padStart(8, '0')}`;
-
-    const itemsNormalizados = items.map((it) => {
-      const cantidad = Number(it.cantidad || it.quantity || 1);
-      const precioUnitario = Number(it.precio_unitario || it.price || 0);
-      const subtotal = Number((cantidad * precioUnitario).toFixed(2));
-      return {
-        id_item: it.id_producto || it.id_medicamento || it.product_id || it.id || null,
-        descripcion: it.descripcion || it.nombre || it.nombre_comercial || it.name || 'ÍTEM DE VENTA',
-        unidad_medida: it.unidad_medida || 'NIU',
-        cantidad,
-        precio_unitario: precioUnitario,
-        subtotal,
-      };
-    });
-
-    const sumaBruta = itemsNormalizados.reduce((acc, it) => acc + it.subtotal, 0);
-    const desc = Number(descuentoGlobal) || 0;
-    const totalFinal = Math.max(0, Number((sumaBruta - desc).toFixed(2)));
-    const opGravadas = Number((totalFinal / 1.18).toFixed(2));
-    const igvCalculado = Number((totalFinal - opGravadas).toFixed(2));
+    // Cálculo y normalización UBL de totales
+    const calculoUbl = calcularTotalesUbl(items);
+    const desc = roundMoney(Number(descuentoGlobal) || 0, 2);
+    const totalFinal = Math.max(0, roundMoney(calculoUbl.importeTotal - desc, 2));
 
     const docCliente = detectarTipoDocumentoCliente(clienteDocumento, tipoComprobante);
+
+    // Validación de reglas tributarias obligatorias SUNAT
+    validarReglasSunat({
+      tipoComprobante: codigoDoc,
+      serie: serieFinal,
+      cliente: {
+        tipo_documento: docCliente.codigo,
+        numero_documento: docCliente.numero,
+      },
+      total: totalFinal,
+      items: calculoUbl.items,
+    });
+
+    // Obtener siguiente correlativo serializado con bloqueo de fila
+    const { correlativo, correlativoFormateado, numeracionCompleta } =
+      await obtenerSiguienteCorrelativo(
+        {
+          empresaId,
+          sucursalId,
+          tipoComprobante,
+          serie: serieFinal,
+        },
+        t
+      );
+
     const fechaEmision = new Date();
 
     const { xmlFirmado, hashCpe, qrString } = construirXmlUbl21({
@@ -278,28 +422,28 @@ export async function emitirComprobanteUniversal({
       comprobante: {
         tipo_documento_codigo: codigoDoc,
         serie: serieFinal,
-        correlativo: siguienteCorrelativo,
-        numero_formato: numeroFormato,
+        correlativo,
+        numero_formato: numeracionCompleta,
         fecha_emision: fechaEmision,
         moneda: 'PEN',
-        op_gravadas: opGravadas,
-        igv: igvCalculado,
+        op_gravadas: calculoUbl.opGravadas,
+        igv: calculoUbl.totalIgv,
         total: totalFinal,
       },
-      items: itemsNormalizados,
+      items: calculoUbl.items,
     });
 
     const cdrXml = `<?xml version="1.0" encoding="UTF-8"?>
 <ar:ApplicationResponse xmlns:ar="urn:oasis:names:specification:ubl:schema:xsd:ApplicationResponse-2"
                         xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2"
                         xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2">
-  <cbc:ID>R-${rucEmisor}-${codigoDoc}-${numeroFormato}</cbc:ID>
+  <cbc:ID>R-${rucEmisor}-${codigoDoc}-${numeracionCompleta}</cbc:ID>
   <cbc:IssueDate>${fechaEmision.toISOString().slice(0, 10)}</cbc:IssueDate>
   <cac:DocumentResponse>
     <cac:Response>
-      <cbc:ReferenceID>${numeroFormato}</cbc:ReferenceID>
+      <cbc:ReferenceID>${numeracionCompleta}</cbc:ReferenceID>
       <cbc:ResponseCode>0</cbc:ResponseCode>
-      <cbc:Description>La ${tipoComprobante} numero ${numeroFormato}, ha sido aceptada (${entorno.toUpperCase()})</cbc:Description>
+      <cbc:Description>La ${tipoComprobante} numero ${numeracionCompleta}, ha sido aceptada (${entorno.toUpperCase()})</cbc:Description>
     </cac:Response>
   </cac:DocumentResponse>
 </ar:ApplicationResponse>`;
@@ -313,27 +457,27 @@ export async function emitirComprobanteUniversal({
       tipo_documento_codigo: codigoDoc,
       tipo_comprobante: tipoComprobante,
       serie: serieFinal,
-      correlativo: siguienteCorrelativo,
-      numero_formato: numeroFormato,
+      correlativo,
+      numero_formato: numeracionCompleta,
       fecha_emision: fechaEmision,
       moneda: 'PEN',
       cliente_tipo_doc: docCliente.codigo,
       cliente_num_doc: docCliente.numero,
       cliente_razon_social: clienteNombre || 'CLIENTE VARIOS',
       cliente_direccion: clienteDireccion || null,
-      op_gravadas: opGravadas,
-      op_exoneradas: 0.00,
-      op_inafectas: 0.00,
+      op_gravadas: calculoUbl.opGravadas,
+      op_exoneradas: calculoUbl.opExoneradas,
+      op_inafectas: calculoUbl.opInafectas,
       descuento_global: desc,
-      igv: igvCalculado,
+      igv: calculoUbl.totalIgv,
       total: totalFinal,
-      items_json: itemsNormalizados,
+      items_json: calculoUbl.items,
       doc_referencia_serie_num: docReferenciaSerieNum,
       doc_referencia_motivo: docReferenciaMotivo,
       entorno_sunat: entorno,
       sunat_estado: 'ACEPTADO',
       sunat_codigo_respuesta: '0',
-      sunat_descripcion: `La ${tipoComprobante} número ${numeroFormato}, ha sido aceptada`,
+      sunat_descripcion: `La ${tipoComprobante} número ${numeracionCompleta}, ha sido aceptada`,
       sunat_hash: hashCpe,
       sunat_qr: qrString,
       xml_firmado: xmlFirmado,
@@ -354,6 +498,11 @@ export async function emitirComprobanteUniversal({
 }
 
 export default {
+  escapeXml,
+  roundMoney,
+  validarReglasSunat,
+  calcularTotalesUbl,
+  obtenerSiguienteCorrelativo,
   detectarTipoDocumentoCliente,
   construirXmlUbl21,
   emitirComprobanteUniversal,

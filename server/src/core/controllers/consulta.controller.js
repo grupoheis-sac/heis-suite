@@ -1,48 +1,80 @@
 import axios from 'axios';
 
-// Validar algoritmo Módulo 11 oficial de SUNAT para RUC
-function validarRucSunat(ruc) {
-  if (!/^\d{11}$/.test(ruc)) return false;
+const cachePadron = new Map();
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 horas
+
+// Limpieza periódica de caché para liberar memoria
+const cacheCleanupInterval = setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of cachePadron.entries()) {
+    if (now > entry.expiresAt) {
+      cachePadron.delete(key);
+    }
+  }
+}, 60 * 60 * 1000);
+
+if (cacheCleanupInterval.unref) {
+  cacheCleanupInterval.unref();
+}
+
+/**
+ * Valida la autenticidad matemática de un número de RUC peruano (Algoritmo Módulo 11 SUNAT)
+ */
+export function esRucValido(ruc) {
+  if (!/^(10|15|17|20)\d{9}$/.test(ruc)) return false;
   const factores = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2];
   let suma = 0;
   for (let i = 0; i < 10; i++) {
-    suma += parseInt(ruc.charAt(i), 10) * factores[i];
+    suma += Number(ruc[i]) * factores[i];
   }
-  const residuo = suma % 11;
-  const digitoEsperado = 11 - residuo === 10 ? 0 : 11 - residuo === 11 ? 1 : 11 - residuo;
-  return digitoEsperado === parseInt(ruc.charAt(10), 10);
+  const resto = suma % 11;
+  const complemento = 11 - resto;
+  const digitoVerificador = complemento === 10 ? 0 : complemento === 11 ? 1 : complemento;
+  return digitoVerificador === Number(ruc[10]);
 }
 
 export async function consultarDocumento(req, res) {
-  const { tipo, numero } = req.params;
-
-  if (!tipo || !numero) {
-    return res.status(400).json({ success: false, error: 'Tipo y número de documento son requeridos' });
-  }
-
-  const tipoNormalizado = tipo.toLowerCase().trim();
-  const numLimpio = numero.trim();
-
-  // CONSULTA RUC (11 dígitos)
-  if (tipoNormalizado === 'ruc') {
-    if (!/^\d{11}$/.test(numLimpio)) {
-      return res.status(400).json({ success: false, error: 'El RUC debe contener exactamente 11 dígitos numéricos' });
+  try {
+    const { tipo, numero } = req.params;
+    if (!tipo || !numero) {
+      return res.status(400).json({ success: false, error: 'Tipo y número de documento son requeridos' });
     }
 
-    const esValidoSunat = validarRucSunat(numLimpio);
+    const tipoNormalizado = tipo.toLowerCase().trim();
+    const numLimpio = String(numero).trim();
 
-    // Intentar consulta a servicio público gratuito SUNAT / ApiPeru con timeout bajo
-    try {
-      const response = await axios.get(`https://api.apis.net.pe/v1/ruc?numero=${numLimpio}`, {
-        timeout: 2500,
+    if (tipoNormalizado === 'dni' && !/^\d{8}$/.test(numLimpio)) {
+      return res.status(400).json({ success: false, error: 'El DNI debe contener exactamente 8 dígitos numéricos.' });
+    }
+
+    if (tipoNormalizado === 'ruc' && !esRucValido(numLimpio)) {
+      return res.status(400).json({ success: false, error: 'El RUC ingresado no es válido según el dígito verificador de SUNAT.' });
+    }
+
+    const cacheKey = `${tipoNormalizado}:${numLimpio}`;
+    const cached = cachePadron.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return res.json({
+        success: true,
+        data: cached.data,
+        cached: true,
+        ...cached.data,
       });
+    }
 
-      if (response.data && (response.data.nombre || response.data.razonSocial)) {
-        return res.json({
-          success: true,
-          data: {
+    // 1. Consulta RUC
+    if (tipoNormalizado === 'ruc') {
+      let resultado = null;
+      try {
+        const response = await axios.get(`https://api.apis.net.pe/v1/ruc?numero=${numLimpio}`, {
+          timeout: 5000,
+        });
+
+        if (response.data && (response.data.nombre || response.data.razonSocial)) {
+          resultado = {
             tipo: 'RUC',
             numero: numLimpio,
+            razon_social: response.data.nombre || response.data.razonSocial,
             razonSocial: response.data.nombre || response.data.razonSocial,
             nombreComercial: response.data.nombreComercial || '',
             estado: response.data.estado || 'ACTIVO',
@@ -51,84 +83,90 @@ export async function consultarDocumento(req, res) {
             departamento: response.data.departamento || 'LIMA',
             provincia: response.data.provincia || 'LIMA',
             distrito: response.data.distrito || '',
-            esValidoAlgoritmo: esValidoSunat,
-          },
-        });
+            esValidoAlgoritmo: true,
+          };
+        }
+      } catch {
+        // Fallback resiliente offline
       }
-    } catch {
-      // Si la API externa no responde o no tiene token, fallback inteligente estructurado
+
+      if (!resultado) {
+        const prefijo = numLimpio.substring(0, 2);
+        let tipoPersona = 'SOCIEDAD ANÓNIMA CERRADA';
+        if (prefijo === '10') tipoPersona = 'PERSONA NATURAL CON NEGOCIO';
+        else if (prefijo === '20') tipoPersona = 'EMPRESA / SOCIEDAD';
+        else if (prefijo === '15') tipoPersona = 'INSTITUCIÓN PÚBLICA';
+
+        resultado = {
+          tipo: 'RUC',
+          numero: numLimpio,
+          razon_social: `COMERCIAL ${numLimpio.substring(2, 8)} ${prefijo === '20' ? 'S.A.C.' : 'E.I.R.L.'}`,
+          razonSocial: `COMERCIAL ${numLimpio.substring(2, 8)} ${prefijo === '20' ? 'S.A.C.' : 'E.I.R.L.'}`,
+          nombreComercial: `HEIS CLIENTE ${numLimpio.substring(7)}`,
+          estado: 'ACTIVO',
+          condicion: 'HABIDO',
+          direccion: `CALLE LOS EMPRENDEDORES #${numLimpio.substring(4, 7)}, DISTRITO COMERCIAL, LIMA`,
+          departamento: 'LIMA',
+          provincia: 'LIMA',
+          distrito: 'MIRAFLORES',
+          tipoPersona,
+          esValidoAlgoritmo: true,
+          modo: 'resiliente',
+        };
+      }
+
+      cachePadron.set(cacheKey, { data: resultado, expiresAt: Date.now() + CACHE_TTL_MS });
+      return res.json({ success: true, data: resultado, ...resultado });
     }
 
-    // Fallback inteligente para desarrollo y resiliencia offline
-    const prefijo = numLimpio.substring(0, 2);
-    let tipoPersona = 'SOCIEDAD ANÓNIMA CERRADA';
-    if (prefijo === '10') tipoPersona = 'PERSONA NATURAL CON NEGOCIO';
-    else if (prefijo === '20') tipoPersona = 'EMPRESA / SOCIEDAD';
-    else if (prefijo === '15') tipoPersona = 'INSTITUCIÓN PÚBLICA';
+    // 2. Consulta DNI
+    if (tipoNormalizado === 'dni') {
+      let resultado = null;
+      try {
+        const response = await axios.get(`https://api.apis.net.pe/v1/dni?numero=${numLimpio}`, {
+          timeout: 5000,
+        });
 
-    return res.json({
-      success: true,
-      data: {
-        tipo: 'RUC',
-        numero: numLimpio,
-        razonSocial: `COMERCIAL ${numLimpio.substring(2, 8)} ${prefijo === '20' ? 'S.A.C.' : 'E.I.R.L.'}`,
-        nombreComercial: `HEIS CLIENTE ${numLimpio.substring(7)}`,
-        estado: 'ACTIVO',
-        condicion: 'HABIDO',
-        direccion: `CALLE LOS EMPRENDEDORES #${numLimpio.substring(4, 7)}, DISTRITO COMERCIAL, LIMA`,
-        departamento: 'LIMA',
-        provincia: 'LIMA',
-        distrito: 'MIRAFLORES',
-        tipoPersona,
-        esValidoAlgoritmo: esValidoSunat,
-        modo: 'resiliente',
-      },
-    });
-  }
-
-  // CONSULTA DNI (8 dígitos)
-  if (tipoNormalizado === 'dni') {
-    if (!/^\d{8}$/.test(numLimpio)) {
-      return res.status(400).json({ success: false, error: 'El DNI debe contener exactamente 8 dígitos numéricos' });
-    }
-
-    try {
-      const response = await axios.get(`https://api.apis.net.pe/v1/dni?numero=${numLimpio}`, {
-        timeout: 2500,
-      });
-
-      if (response.data && response.data.nombres) {
-        return res.json({
-          success: true,
-          data: {
+        if (response.data && response.data.nombres) {
+          const nombreCompleto = `${response.data.nombres} ${response.data.apellidoPaterno || ''} ${response.data.apellidoMaterno || ''}`.trim();
+          resultado = {
             tipo: 'DNI',
             numero: numLimpio,
             nombres: response.data.nombres,
             apellidoPaterno: response.data.apellidoPaterno || '',
             apellidoMaterno: response.data.apellidoMaterno || '',
-            nombreCompleto: `${response.data.nombres} ${response.data.apellidoPaterno || ''} ${response.data.apellidoMaterno || ''}`.trim(),
-          },
-        });
+            nombre_completo: nombreCompleto,
+            nombreCompleto,
+          };
+        }
+      } catch {
+        // Fallback resiliente offline
       }
-    } catch {
-      // Fallback
+
+      if (!resultado) {
+        resultado = {
+          tipo: 'DNI',
+          numero: numLimpio,
+          nombres: 'CIUDADANO',
+          apellidoPaterno: 'REGISTRADO',
+          apellidoMaterno: numLimpio.substring(4),
+          nombre_completo: `CLIENTE REGISTRADO ${numLimpio}`,
+          nombreCompleto: `CLIENTE REGISTRADO ${numLimpio}`,
+          modo: 'resiliente',
+        };
+      }
+
+      cachePadron.set(cacheKey, { data: resultado, expiresAt: Date.now() + CACHE_TTL_MS });
+      return res.json({ success: true, data: resultado, ...resultado });
     }
 
-    // Fallback inteligente
-    return res.json({
-      success: true,
-      data: {
-        tipo: 'DNI',
-        numero: numLimpio,
-        nombres: 'CIUDADANO',
-        apellidoPaterno: `REGISTRADO`,
-        apellidoMaterno: numLimpio.substring(4),
-        nombreCompleto: `CLIENTE REGISTRADO ${numLimpio}`,
-        modo: 'resiliente',
-      },
-    });
+    return res.status(400).json({ success: false, error: 'Tipo de documento no soportado (use ruc o dni)' });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: 'Error al consultar el padrón de identidad.' });
   }
-
-  return res.status(400).json({ success: false, error: 'Tipo de documento no soportado (use ruc o dni)' });
 }
 
+export default {
+  esRucValido,
+  consultarDocumento,
+};

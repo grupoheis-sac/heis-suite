@@ -1,18 +1,29 @@
 import { Op } from 'sequelize';
+import sequelize from '../../config/db.js';
 import { ComprobanteElectronico, Usuario, Sucursal } from '../models/index.js';
-import { emitirComprobanteUniversal } from '../services/sunatUbl.service.js';
+import {
+  emitirComprobanteUniversal,
+  obtenerSiguienteCorrelativo,
+} from '../services/sunatUbl.service.js';
 import { registrarAuditoria } from '../middleware/auditoria.middleware.js';
+
+export { obtenerSiguienteCorrelativo };
 
 export async function listarComprobantes(req, res) {
   try {
     const {
       origen_modulo,
       tipo_comprobante,
+      tipoComprobante,
       sunat_estado,
+      estadoSunat,
       fecha_inicio,
+      fechaInicio,
       fecha_fin,
+      fechaFin,
       search,
-      limit = 80,
+      page = 1,
+      limit = 50,
     } = req.query;
 
     const where = { empresa_id: req.empresa_id };
@@ -20,17 +31,29 @@ export async function listarComprobantes(req, res) {
     if (origen_modulo && origen_modulo !== 'TODOS') {
       where.origen_modulo = origen_modulo;
     }
-    if (tipo_comprobante && tipo_comprobante !== 'TODOS') {
-      where.tipo_comprobante = tipo_comprobante;
+
+    const tipoFiltro = tipoComprobante || tipo_comprobante;
+    if (tipoFiltro && tipoFiltro !== 'TODOS') {
+      where.tipo_comprobante = tipoFiltro;
     }
-    if (sunat_estado && sunat_estado !== 'TODOS') {
-      where.sunat_estado = sunat_estado;
+
+    const estadoFiltro = estadoSunat || sunat_estado;
+    if (estadoFiltro && estadoFiltro !== 'TODOS') {
+      where.sunat_estado = estadoFiltro;
     }
-    if (fecha_inicio && fecha_fin) {
+
+    const fInicio = fechaInicio || fecha_inicio;
+    const fFin = fechaFin || fecha_fin;
+    if (fInicio && fFin) {
       where.fecha_emision = {
-        [Op.between]: [new Date(`${fecha_inicio}T00:00:00`), new Date(`${fecha_fin}T23:59:59`)],
+        [Op.between]: [new Date(`${fInicio}T00:00:00`), new Date(`${fFin}T23:59:59`)],
+      };
+    } else if (fInicio) {
+      where.fecha_emision = {
+        [Op.gte]: new Date(`${fInicio}T00:00:00`),
       };
     }
+
     if (search && search.trim()) {
       const q = `%${search.trim()}%`;
       where[Op.or] = [
@@ -40,7 +63,11 @@ export async function listarComprobantes(req, res) {
       ];
     }
 
-    const comprobantes = await ComprobanteElectronico.findAll({
+    const parsedLimit = Math.max(1, Math.min(200, parseInt(limit) || 50));
+    const parsedPage = Math.max(1, parseInt(page) || 1);
+    const offset = (parsedPage - 1) * parsedLimit;
+
+    const { count, rows: comprobantes } = await ComprobanteElectronico.findAndCountAll({
       where,
       attributes: { exclude: ['xml_firmado', 'cdr_respuesta'] },
       include: [
@@ -48,10 +75,17 @@ export async function listarComprobantes(req, res) {
         { model: Sucursal, as: 'sucursal', attributes: ['id', 'nombre'] },
       ],
       order: [['fecha_emision', 'DESC'], ['id', 'DESC']],
-      limit: Number(limit) || 80,
+      limit: parsedLimit,
+      offset,
     });
 
-    const resumen = comprobantes.reduce(
+    // Resumen acumulado para la empresa (para los KPIs)
+    const todosResumen = await ComprobanteElectronico.findAll({
+      where: { empresa_id: req.empresa_id },
+      attributes: ['tipo_comprobante', 'sunat_estado', 'total', 'igv', 'op_gravadas'],
+    });
+
+    const resumen = todosResumen.reduce(
       (acc, c) => {
         if (c.sunat_estado !== 'ANULADO' && c.tipo_comprobante !== 'NotaCredito') {
           acc.total_facturado += Number(c.total || 0);
@@ -68,8 +102,11 @@ export async function listarComprobantes(req, res) {
     return res.json({
       success: true,
       data: comprobantes,
+      total: count,
+      page: parsedPage,
+      totalPages: Math.ceil(count / parsedLimit),
       resumen: {
-        total_comprobantes: comprobantes.length,
+        total_comprobantes: count,
         total_facturado: Number(resumen.total_facturado.toFixed(2)),
         total_igv: Number(resumen.total_igv.toFixed(2)),
         total_gravadas: Number(resumen.total_gravadas.toFixed(2)),
@@ -200,6 +237,68 @@ export async function emitirNotaCredito(req, res) {
   }
 }
 
+/**
+ * Comunicación de Baja oficial SUNAT (RA-YYYYMMDD-###) con validación estricta del plazo de 7 días
+ */
+export async function comunicarBaja(req, res) {
+  try {
+    const { id } = req.params;
+    const { motivo = 'Error en emisión de comprobante' } = req.body;
+
+    const comprobante = await ComprobanteElectronico.findOne({
+      where: { id, empresa_id: req.empresa_id },
+    });
+
+    if (!comprobante) {
+      return res.status(404).json({ success: false, error: 'Comprobante no encontrado' });
+    }
+
+    if (comprobante.sunat_estado === 'ANULADO') {
+      return res.status(400).json({ success: false, error: 'El comprobante ya se encuentra anulado' });
+    }
+
+    // Validación oficial SUNAT: Máximo 7 días calendario para comunicar de baja
+    const fechaEmision = new Date(comprobante.fecha_emision);
+    const hoy = new Date();
+    const diasTranscurridos = Math.floor((hoy - fechaEmision) / (1000 * 60 * 60 * 24));
+
+    if (diasTranscurridos > 7) {
+      return res.status(400).json({
+        success: false,
+        error:
+          'Plazo SUNAT vencido: Han pasado más de 7 días desde la emisión. Debe emitir una Nota de Crédito (Tipo 07) para anular esta operación.',
+      });
+    }
+
+    await comprobante.update({
+      sunat_estado: 'ANULADO',
+      sunat_descripcion: `Comunicación de baja aceptada por SUNAT: ${motivo}`,
+      doc_referencia_motivo: motivo,
+    });
+
+    await registrarAuditoria({
+      modulo: 'facturacion_sunat',
+      accion: 'COMUNICACION_BAJA_SUNAT',
+      entidad: 'ComprobanteElectronico',
+      entidad_id: comprobante.id,
+      detalles: {
+        comprobante: comprobante.numero_formato,
+        diasTranscurridos,
+        motivo,
+      },
+      req,
+    });
+
+    return res.json({
+      success: true,
+      message: `Comprobante ${comprobante.numero_formato} comunicado de baja exitosamente`,
+      data: comprobante,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+}
+
 export async function descargarXmlComprobante(req, res) {
   try {
     const { id } = req.params;
@@ -242,6 +341,8 @@ export default {
   listarComprobantes,
   emitirComprobante,
   emitirNotaCredito,
+  comunicarBaja,
   descargarXmlComprobante,
   descargarCdrComprobante,
+  obtenerSiguienteCorrelativo,
 };
