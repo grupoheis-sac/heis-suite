@@ -1,7 +1,7 @@
 
 export { api, createModuleApi, consultarDocumento } from './services/api';
 export { useAuthStore } from './auth/authStore';
-export { EmpresaProvider, useModulos, useEmpresa, usePermiso } from './auth/EmpresaContext';
+export { EmpresaProvider, useModulos, useEmpresa, usePermiso, useSubmodulo } from './auth/EmpresaContext';
 export { useSucursalStore } from './store/sucursalStore';
 export { useSettingsStore } from './store/settingsStore';
 export { applyBrandToTab } from './utils/brand';

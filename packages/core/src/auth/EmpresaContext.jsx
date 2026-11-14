@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useMemo } from 'react';
+import React, { createContext, useContext, useMemo, useCallback } from 'react';
 import { useAuthStore } from './authStore';
 
 const EmpresaContext = createContext(null);
@@ -19,12 +19,25 @@ export function EmpresaProvider({ children }) {
         activos = empresa.modulos_activos;
       }
     }
-    // Si no tiene ninguno configurado: en plan enterprise se habilitan todos, de lo contrario restaurante
+
     if (!Array.isArray(activos) || activos.length === 0) {
       if (empresa?.plan === 'enterprise') {
         activos = ['restaurante', 'ferreteria', 'botica', 'hospedaje'];
       } else {
         activos = ['restaurante'];
+      }
+    }
+
+    let submodulos = {};
+    if (empresa?.submodulos_activos) {
+      if (typeof empresa.submodulos_activos === 'string') {
+        try {
+          submodulos = JSON.parse(empresa.submodulos_activos);
+        } catch {
+          submodulos = {};
+        }
+      } else if (typeof empresa.submodulos_activos === 'object') {
+        submodulos = empresa.submodulos_activos;
       }
     }
 
@@ -35,13 +48,26 @@ export function EmpresaProvider({ children }) {
       hospedaje: activos.includes('hospedaje'),
       minimarket: activos.includes('minimarket'),
       lista: activos,
+      submodulos,
     };
   }, [empresa]);
+
+  const hasSubmodulo = useCallback(
+    (submoduloId) => {
+      if (user?.rol === 'superadmin' && !empresa) return true;
+      if (!modulos.submodulos || modulos.submodulos[submoduloId] === undefined) {
+        return true; // Por defecto activo si el módulo padre está contratado
+      }
+      return Boolean(modulos.submodulos[submoduloId]);
+    },
+    [modulos.submodulos, user?.rol, empresa]
+  );
 
   const value = {
     empresa,
     user,
     modulos,
+    hasSubmodulo,
     sucursalActual,
     setSucursalActual,
   };
@@ -51,7 +77,22 @@ export function EmpresaProvider({ children }) {
 
 export function useModulos() {
   const context = useContext(EmpresaContext);
-  return context?.modulos || { restaurante: true, ferreteria: false, botica: false, hospedaje: false, lista: ['restaurante'] };
+  return (
+    context?.modulos || {
+      restaurante: true,
+      ferreteria: false,
+      botica: false,
+      hospedaje: false,
+      lista: ['restaurante'],
+      submodulos: {},
+    }
+  );
+}
+
+export function useSubmodulo(submoduloId) {
+  const context = useContext(EmpresaContext);
+  if (!context?.hasSubmodulo) return true;
+  return context.hasSubmodulo(submoduloId);
 }
 
 export function useEmpresa() {
@@ -63,12 +104,15 @@ export function usePermiso(permisoRequerido) {
   const { user } = useAuthStore();
   if (!user) return false;
 
-  // SuperAdmin y Administrador tienen acceso total
-  if (user.rol === 'superadmin' || user.rol === 'admin' || user.rol === 'Administrador' || user.role === 'admin') {
+  if (
+    user.rol === 'superadmin' ||
+    user.rol === 'admin' ||
+    user.rol === 'Administrador' ||
+    user.role === 'admin'
+  ) {
     return true;
   }
 
   const permisos = user.permisos || {};
   return Boolean(permisos[permisoRequerido]);
 }
-

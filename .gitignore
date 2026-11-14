@@ -39,6 +39,8 @@ backups/
 # Base de datos local
 *.sql
 *.sqlite
+!server/src/migrations/*.sql
+!migrar_cajas_multitenant.sql
 
 # Sistema y editores
 .DS_Store

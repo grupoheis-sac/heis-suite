@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import api from './api';
+import api from './cajaApi';
 import {
   Clock,
   Wallet,

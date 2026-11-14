@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import api from '../api';
+import api from '../cajaApi';
 
 export const useCajaStore = create((set, get) => ({
   cajaInfo: null,

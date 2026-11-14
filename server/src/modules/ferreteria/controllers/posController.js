@@ -8,7 +8,7 @@ import {
   Caja,
   InventarioMovimiento,
 } from '../models/index.js';
-import { Usuario } from '../../../core/models/index.js';
+import { Usuario, CajaGeneral, CajaMovimientoGeneral } from '../../../core/models/index.js';
 import { registrarAuditoria } from '../../../core/middleware/auditoria.middleware.js';
 
 export const getVentas = async (req, res, next) => {
@@ -257,10 +257,54 @@ export const crearVenta = async (req, res, next) => {
       );
     }
 
-    // Si hubo pago en efectivo y hay caja abierta, registrar venta en caja
+    // Si hubo pago en efectivo y hay caja abierta legacy, registrar venta en caja legacy
     if (id_caja && (tipo_pago === 'Efectivo' || tipo_pago === 'Mixto')) {
       const efectivoSumar = tipo_pago === 'Efectivo' ? totalVenta : parseFloat(monto_efectivo) || 0;
       await cajaAbierta.increment('total_ventas_efectivo', { by: efectivoSumar, transaction: t });
+    }
+
+    // Impactar en Caja General transversal (core_cajas)
+    try {
+      const cajaGeneralActiva = await CajaGeneral.findOne({
+        where: {
+          empresa_id: req.empresa_id,
+          estado: 'abierta',
+          ...(req.sucursal_id ? { sucursal_id: req.sucursal_id } : {}),
+        },
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+
+      if (cajaGeneralActiva) {
+        const efectivoSumar = tipo_pago === 'Efectivo' ? totalVenta : (tipo_pago === 'Mixto' ? (parseFloat(monto_efectivo) || 0) : 0);
+        const digitalSumar = tipo_pago !== 'Efectivo' ? (tipo_pago === 'Mixto' ? (parseFloat(monto_digital) || 0) : totalVenta) : 0;
+
+        if (efectivoSumar > 0) {
+          cajaGeneralActiva.total_ventas_efectivo = parseFloat((parseFloat(cajaGeneralActiva.total_ventas_efectivo || 0) + efectivoSumar).toFixed(2));
+        }
+        if (digitalSumar > 0) {
+          cajaGeneralActiva.total_ventas_digital = parseFloat((parseFloat(cajaGeneralActiva.total_ventas_digital || 0) + digitalSumar).toFixed(2));
+        }
+        await cajaGeneralActiva.save({ transaction: t });
+
+        await CajaMovimientoGeneral.create(
+          {
+            empresa_id: req.empresa_id,
+            sucursal_id: req.sucursal_id || null,
+            id_caja: cajaGeneralActiva.id,
+            id_usuario: req.user ? req.user.id : 1,
+            tipo: 'ingreso',
+            concepto: `Venta POS #${serie}-${numeroStr}`,
+            monto: totalVenta,
+            metodo_pago: tipo_pago,
+            origen_modulo: 'ferreteria',
+            ref_legacy_id: nuevaVenta.id,
+          },
+          { transaction: t }
+        );
+      }
+    } catch (cajaGenErr) {
+      console.warn('⚠️ No se pudo registrar venta ferretería en CajaGeneral:', cajaGenErr.message);
     }
 
     await t.commit();

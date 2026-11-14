@@ -1,6 +1,7 @@
 import dotenv from 'dotenv';
 import { createApp } from './app.js';
 import { testConnection } from './config/db.js';
+import { CajaGeneral, CajaMovimientoGeneral } from './core/models/index.js';
 
 dotenv.config();
 
@@ -11,7 +12,16 @@ async function bootstrap() {
   console.log('   HEIS SUITE - BACKEND MULTI-TENANT ENTERPRISE   ');
   console.log('======================================================\n');
 
-  await testConnection();
+  const connected = await testConnection();
+  if (connected) {
+    try {
+      await CajaGeneral.sync({ alter: false });
+      await CajaMovimientoGeneral.sync({ alter: false });
+      console.log('✅ Tablas transversales core_cajas y core_caja_movimientos verificadas.');
+    } catch (syncErr) {
+      console.warn('⚠️ Nota sobre verificación de tablas core_cajas:', syncErr.message);
+    }
+  }
 
   const app = await createApp();
 

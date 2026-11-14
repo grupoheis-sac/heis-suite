@@ -1,10 +1,10 @@
 import { Empresa } from '../models/index.js';
+import {
+  tenantStorage,
+  getCachedEmpresa,
+  setCachedEmpresa,
+} from '../context/tenantContext.js';
 
-/**
- * Middleware Multi-Tenant que inyecta y valida el contexto de Empresa
- * Para SuperAdmin permite simular o actuar sobre cualquier empresa enviando 'X-Empresa-ID'
- * Para usuarios regulares aísla automáticamente a su propia empresa.
- */
 export async function tenantContext(req, res, next) {
   try {
     if (!req.user) {
@@ -12,17 +12,20 @@ export async function tenantContext(req, res, next) {
     }
 
     let empresaId = req.user.empresa_id;
+    const headerSucursalId = req.headers['x-sucursal-id'];
+    const sucursalId = headerSucursalId ? Number(headerSucursalId) : (req.user.sucursal_id || null);
 
-    // Si es SuperAdmin, puede especificar una empresa objetivo en la cabecera
+    // Si es SuperAdmin, puede inspeccionar cualquier empresa enviando 'X-Empresa-ID'
     if (req.user.rol === 'superadmin') {
       const headerEmpresaId = req.headers['x-empresa-id'];
-      if (headerEmpresaId && headerEmpresaId !== 'null' && headerEmpresaId !== 'undefined' && headerEmpresaId !== 'global') {
+      if (
+        headerEmpresaId &&
+        headerEmpresaId !== 'null' &&
+        headerEmpresaId !== 'undefined' &&
+        headerEmpresaId !== 'global'
+      ) {
         const parsed = Number(headerEmpresaId);
-        if (!isNaN(parsed) && parsed > 0) {
-          empresaId = parsed;
-        } else {
-          empresaId = null;
-        }
+        empresaId = !isNaN(parsed) && parsed > 0 ? parsed : null;
       } else {
         empresaId = null;
       }
@@ -30,25 +33,44 @@ export async function tenantContext(req, res, next) {
 
     if (!empresaId) {
       if (req.user.rol === 'superadmin') {
-        // SuperAdmin en modo plataforma global
         req.empresa_id = null;
+        req.sucursal_id = sucursalId;
         req.empresa = null;
-        return next();
+        return tenantStorage.run({ empresaId: null, sucursalId, isSuperAdmin: true }, () => next());
       }
       return res.status(403).json({ success: false, error: 'Usuario sin empresa asignada' });
     }
 
-    const empresa = await Empresa.findByPk(empresaId);
+    let empresa = getCachedEmpresa(empresaId);
+    if (!empresa) {
+      const dbEmpresa = await Empresa.findByPk(empresaId, { skipTenant: true });
+      if (dbEmpresa) {
+        empresa = dbEmpresa.toJSON();
+        setCachedEmpresa(empresaId, empresa);
+      }
+    }
+
     if (!empresa || !empresa.activo) {
-      return res.status(403).json({ success: false, error: 'Empresa no encontrada o inactiva' });
+      return res.status(403).json({
+        success: false,
+        error: 'Empresa no encontrada o con suscripción suspendida. Contacte a soporte HEIS.',
+      });
     }
 
     req.empresa_id = empresa.id;
+    req.sucursal_id = sucursalId;
     req.empresa = empresa;
-    next();
+
+    return tenantStorage.run(
+      {
+        empresaId: empresa.id,
+        sucursalId,
+        isSuperAdmin: req.user.rol === 'superadmin',
+      },
+      () => next()
+    );
   } catch (error) {
     console.error('Error en tenantContext middleware:', error);
     res.status(500).json({ success: false, error: 'Error interno en contexto de empresa' });
   }
 }
-

@@ -9,7 +9,7 @@ import {
   Caja,
   KardexFarmacia
 } from '../models/index.js';
-import { Usuario } from '../../../core/models/index.js';
+import { Usuario, CajaGeneral, CajaMovimientoGeneral } from '../../../core/models/index.js';
 
 export const getVentas = async (req, res) => {
   try {
@@ -232,13 +232,54 @@ export const crearVenta = async (req, res) => {
       }
     }
 
-    // Actualizar caja si está abierta
+    // Actualizar caja legacy si está abierta
     if (id_caja) {
       const caja = await Caja.findByPk(id_caja, { transaction: t });
       if (caja && caja.estado === 'Abierta') {
         const nuevoTotalVentas = parseFloat(caja.total_ventas || 0) + total;
         await caja.update({ total_ventas: nuevoTotalVentas }, { transaction: t });
       }
+    }
+
+    // Impactar en Caja General transversal (core_cajas)
+    try {
+      const cajaGeneralActiva = await CajaGeneral.findOne({
+        where: {
+          empresa_id: req.empresa_id,
+          estado: 'abierta',
+          ...(req.sucursal_id ? { sucursal_id: req.sucursal_id } : {}),
+        },
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+
+      if (cajaGeneralActiva) {
+        const esEfectivo = tipo_pago === 'Efectivo';
+        if (esEfectivo) {
+          cajaGeneralActiva.total_ventas_efectivo = parseFloat((parseFloat(cajaGeneralActiva.total_ventas_efectivo || 0) + total).toFixed(2));
+        } else {
+          cajaGeneralActiva.total_ventas_digital = parseFloat((parseFloat(cajaGeneralActiva.total_ventas_digital || 0) + total).toFixed(2));
+        }
+        await cajaGeneralActiva.save({ transaction: t });
+
+        await CajaMovimientoGeneral.create(
+          {
+            empresa_id: req.empresa_id,
+            sucursal_id: req.sucursal_id || null,
+            id_caja: cajaGeneralActiva.id,
+            id_usuario: userId || 1,
+            tipo: 'ingreso',
+            concepto: `Dispensación Botica #${serie}-${numero}`,
+            monto: total,
+            metodo_pago: tipo_pago,
+            origen_modulo: 'botica',
+            ref_legacy_id: venta.id,
+          },
+          { transaction: t }
+        );
+      }
+    } catch (cajaGenErr) {
+      console.warn('⚠️ No se pudo registrar venta botica en CajaGeneral:', cajaGenErr.message);
     }
 
     await t.commit();

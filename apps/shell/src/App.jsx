@@ -100,6 +100,22 @@ function RequireSuperAdmin({ children }) {
   return children;
 }
 
+// Guard de Módulo y Submódulo
+function RequireModuloRoute({ modulo, submodulo = null, children }) {
+  const { user, empresa } = useAuthStore();
+  const modulos = useModulos();
+  const isSuperAdmin = user?.rol === 'superadmin' || user?.role === 'superadmin';
+
+  if (isSuperAdmin && !empresa) return children;
+  if (modulo !== 'core' && (!modulos?.lista || !modulos.lista.includes(modulo))) {
+    return <Navigate to="/dashboard" replace />;
+  }
+  if (submodulo && modulos?.submodulos && modulos.submodulos[submodulo] === false) {
+    return <Navigate to="/dashboard" replace />;
+  }
+  return children;
+}
+
 function RootRedirect() {
   const { user, empresa } = useAuthStore();
   const isSuperAdmin = user?.rol === 'superadmin' || user?.role === 'superadmin';
@@ -255,57 +271,60 @@ export default function App() {
             <Route path="/configuracion" element={<ConfiguracionView />} />
 
             {/* Módulo Restaurante */}
-            <Route path="/mesas" element={<Mesas />} />
-            <Route path="/cocina" element={<Cocina />} />
-            <Route path="/ordenes" element={<Ordenes />} />
-            <Route path="/menu" element={<Menu />} />
-            <Route path="/reservas" element={<Reservas />} />
-            <Route path="/gastos" element={<Gastos />} />
+            <Route path="/mesas" element={<RequireModuloRoute modulo="restaurante" submodulo="mesas"><Mesas /></RequireModuloRoute>} />
+            <Route path="/cocina" element={<RequireModuloRoute modulo="restaurante" submodulo="cocina"><Cocina /></RequireModuloRoute>} />
+            <Route path="/ordenes" element={<RequireModuloRoute modulo="restaurante"><Ordenes /></RequireModuloRoute>} />
+            <Route path="/menu" element={<RequireModuloRoute modulo="restaurante" submodulo="menu"><Menu /></RequireModuloRoute>} />
+            <Route path="/reservas" element={<RequireModuloRoute modulo="restaurante" submodulo="reservas"><Reservas /></RequireModuloRoute>} />
+            <Route path="/gastos" element={<RequireModuloRoute modulo="restaurante" submodulo="gastos"><Gastos /></RequireModuloRoute>} />
 
             {/* Módulo Ferretería / Comercial Retail */}
-            <Route path="/pos" element={<POS />} />
-            <Route path="/inventario" element={<InventarioHub />} />
-            <Route path="/productos-ferreteria" element={<ProductosFerreteria />} />
-            <Route path="/kardex" element={<KardexInventario />} />
-            <Route path="/ventas" element={<Ventas />} />
-            <Route path="/caja" element={<CajaFinanzasHub />} />
-            <Route path="/cajas" element={<CajaFinanzasHub />} />
-            <Route path="/clientes" element={<Clientes />} />
-            <Route path="/cotizaciones" element={<Cotizaciones />} />
-            <Route path="/compras" element={<ComprasProveedoresHub />} />
-            <Route path="/proveedores" element={<ComprasProveedoresHub />} />
+            <Route path="/pos" element={<RequireModuloRoute modulo="ferreteria" submodulo="pos_ferreteria"><POS /></RequireModuloRoute>} />
+            <Route path="/inventario" element={<RequireModuloRoute modulo="ferreteria" submodulo="inventario_ferreteria"><InventarioHub /></RequireModuloRoute>} />
+            <Route path="/productos-ferreteria" element={<RequireModuloRoute modulo="ferreteria" submodulo="inventario_ferreteria"><ProductosFerreteria /></RequireModuloRoute>} />
+            <Route path="/kardex" element={<RequireModuloRoute modulo="ferreteria" submodulo="inventario_ferreteria"><KardexInventario /></RequireModuloRoute>} />
+            <Route path="/ventas" element={<RequireModuloRoute modulo="ferreteria" submodulo="ventas_ferreteria"><Ventas /></RequireModuloRoute>} />
+            <Route path="/cotizaciones" element={<RequireModuloRoute modulo="ferreteria" submodulo="cotizaciones"><Cotizaciones /></RequireModuloRoute>} />
+            <Route path="/compras" element={<RequireModuloRoute modulo="ferreteria" submodulo="compras_proveedores"><ComprasProveedoresHub /></RequireModuloRoute>} />
+            <Route path="/proveedores" element={<RequireModuloRoute modulo="ferreteria" submodulo="compras_proveedores"><ComprasProveedoresHub /></RequireModuloRoute>} />
+            <Route path="/clientes" element={<RequireModuloRoute modulo="ferreteria" submodulo="clientes_obras"><Clientes /></RequireModuloRoute>} />
+
+            {/* Core Transversal: Caja e Historial (Accesibles para todos los giros activos) */}
+            <Route path="/caja" element={<RequireModuloRoute modulo="core"><CajaFinanzasHub /></RequireModuloRoute>} />
+            <Route path="/cajas" element={<Navigate to="/caja" replace />} />
+            <Route path="/historial-cajas" element={<Navigate to="/caja?tab=turnos" replace />} />
 
             {/* Módulo Botica / Farmacéutica */}
-            <Route path="/dispensacion" element={<POSBotica />} />
-            <Route path="/medicamentos" element={<MedicamentosBotica />} />
-            <Route path="/lotes" element={<LotesBotica />} />
-            <Route path="/inventario-botica" element={<InventarioBoticaHub />} />
-            <Route path="/kardex-botica" element={<KardexSunatBotica />} />
-            <Route path="/bajas-sanitarias" element={<BajasCuarentenaBotica />} />
-            <Route path="/temperatura" element={<TemperaturaHumedadBotica />} />
-            <Route path="/digemid" element={<ObservatorioDigemidBotica />} />
-            <Route path="/delivery-botica" element={<DeliveryBotica />} />
-            <Route path="/devoluciones-botica" element={<DevolucionesBotica />} />
-            <Route path="/ventas-botica" element={<VentasBotica />} />
-            <Route path="/caja-botica" element={<CajaBoticaHub />} />
-            <Route path="/clientes-botica" element={<ClientesBotica />} />
-            <Route path="/compras-botica" element={<ComprasBoticaHub />} />
-            <Route path="/creditos-botica" element={<CreditosBotica />} />
-            <Route path="/traslados-botica" element={<TrasladosBotica />} />
+            <Route path="/dispensacion" element={<RequireModuloRoute modulo="botica" submodulo="dispensacion"><POSBotica /></RequireModuloRoute>} />
+            <Route path="/medicamentos" element={<RequireModuloRoute modulo="botica" submodulo="medicamentos"><MedicamentosBotica /></RequireModuloRoute>} />
+            <Route path="/lotes" element={<RequireModuloRoute modulo="botica" submodulo="lotes_fefo"><LotesBotica /></RequireModuloRoute>} />
+            <Route path="/inventario-botica" element={<RequireModuloRoute modulo="botica" submodulo="inventario_botica"><InventarioBoticaHub /></RequireModuloRoute>} />
+            <Route path="/kardex-botica" element={<RequireModuloRoute modulo="botica" submodulo="inventario_botica"><KardexSunatBotica /></RequireModuloRoute>} />
+            <Route path="/bajas-sanitarias" element={<RequireModuloRoute modulo="botica" submodulo="bajas_cuarentena"><BajasCuarentenaBotica /></RequireModuloRoute>} />
+            <Route path="/temperatura" element={<RequireModuloRoute modulo="botica" submodulo="temperatura"><TemperaturaHumedadBotica /></RequireModuloRoute>} />
+            <Route path="/digemid" element={<RequireModuloRoute modulo="botica" submodulo="digemid_opm"><ObservatorioDigemidBotica /></RequireModuloRoute>} />
+            <Route path="/delivery-botica" element={<RequireModuloRoute modulo="botica"><DeliveryBotica /></RequireModuloRoute>} />
+            <Route path="/devoluciones-botica" element={<RequireModuloRoute modulo="botica"><DevolucionesBotica /></RequireModuloRoute>} />
+            <Route path="/ventas-botica" element={<RequireModuloRoute modulo="botica"><VentasBotica /></RequireModuloRoute>} />
+            <Route path="/caja-botica" element={<RequireModuloRoute modulo="botica"><CajaBoticaHub /></RequireModuloRoute>} />
+            <Route path="/clientes-botica" element={<RequireModuloRoute modulo="botica"><ClientesBotica /></RequireModuloRoute>} />
+            <Route path="/compras-botica" element={<RequireModuloRoute modulo="botica"><ComprasBoticaHub /></RequireModuloRoute>} />
+            <Route path="/creditos-botica" element={<RequireModuloRoute modulo="botica"><CreditosBotica /></RequireModuloRoute>} />
+            <Route path="/traslados-botica" element={<RequireModuloRoute modulo="botica"><TrasladosBotica /></RequireModuloRoute>} />
 
             {/* Módulo Hospedaje / Hotelería */}
-            <Route path="/habitaciones" element={<RackHabitaciones />} />
-            <Route path="/rack" element={<RackHabitaciones />} />
-            <Route path="/reservas-hotel" element={<ReservasHotel />} />
-            <Route path="/huespedes" element={<HuespedesHotel />} />
-            <Route path="/limpieza-hotel" element={<LimpiezaHotel />} />
-            <Route path="/tarifas-hotel" element={<TarifasHotel />} />
-            <Route path="/pisos-hotel" element={<PisosHotel />} />
-            <Route path="/caja-hotel" element={<CajaHotel />} />
-            <Route path="/facturacion-hotel" element={<FacturacionHotel />} />
-            <Route path="/pos-hotel" element={<POSHotel />} />
-            <Route path="/inventario-hotel" element={<InventarioHotel />} />
-            <Route path="/reportes-hotel" element={<ReportesHotel />} />
+            <Route path="/habitaciones" element={<RequireModuloRoute modulo="hospedaje" submodulo="rack"><RackHabitaciones /></RequireModuloRoute>} />
+            <Route path="/rack" element={<RequireModuloRoute modulo="hospedaje" submodulo="rack"><RackHabitaciones /></RequireModuloRoute>} />
+            <Route path="/reservas-hotel" element={<RequireModuloRoute modulo="hospedaje" submodulo="reservas_hotel"><ReservasHotel /></RequireModuloRoute>} />
+            <Route path="/huespedes" element={<RequireModuloRoute modulo="hospedaje" submodulo="huespedes"><HuespedesHotel /></RequireModuloRoute>} />
+            <Route path="/limpieza-hotel" element={<RequireModuloRoute modulo="hospedaje" submodulo="limpieza"><LimpiezaHotel /></RequireModuloRoute>} />
+            <Route path="/tarifas-hotel" element={<RequireModuloRoute modulo="hospedaje" submodulo="tarifas"><TarifasHotel /></RequireModuloRoute>} />
+            <Route path="/pisos-hotel" element={<RequireModuloRoute modulo="hospedaje" submodulo="pisos"><PisosHotel /></RequireModuloRoute>} />
+            <Route path="/caja-hotel" element={<RequireModuloRoute modulo="hospedaje" submodulo="caja_hotel"><CajaHotel /></RequireModuloRoute>} />
+            <Route path="/facturacion-hotel" element={<RequireModuloRoute modulo="hospedaje"><FacturacionHotel /></RequireModuloRoute>} />
+            <Route path="/pos-hotel" element={<RequireModuloRoute modulo="hospedaje" submodulo="pos_hotel"><POSHotel /></RequireModuloRoute>} />
+            <Route path="/inventario-hotel" element={<RequireModuloRoute modulo="hospedaje"><InventarioHotel /></RequireModuloRoute>} />
+            <Route path="/reportes-hotel" element={<RequireModuloRoute modulo="hospedaje"><ReportesHotel /></RequireModuloRoute>} />
 
             {/* SuperAdmin SaaS (Solo plataforma) */}
             <Route

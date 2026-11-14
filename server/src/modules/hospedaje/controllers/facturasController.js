@@ -1,4 +1,5 @@
 import { Factura, Reserva, Huesped, Pago, CargoAdicional } from '../models/index.js';
+import { CajaGeneral, CajaMovimientoGeneral } from '../../../core/models/index.js';
 
 export const getFacturas = async (req, res) => {
   try {
@@ -55,6 +56,43 @@ export const crearFactura = async (req, res) => {
       metodo_pago,
       fecha_pago: new Date()
     });
+
+    // Impactar en Caja General activa (core_cajas)
+    try {
+      const cajaGeneralActiva = await CajaGeneral.findOne({
+        where: {
+          empresa_id: empresaId,
+          estado: 'abierta',
+          ...(req.sucursal_id ? { sucursal_id: req.sucursal_id } : {}),
+        },
+      });
+
+      if (cajaGeneralActiva) {
+        const totalNum = parseFloat(total) || 0;
+        const esEfectivo = String(metodo_pago).toLowerCase() === 'efectivo' || String(metodo_pago).toLowerCase() === 'cash';
+        if (esEfectivo) {
+          cajaGeneralActiva.total_ventas_efectivo = parseFloat((parseFloat(cajaGeneralActiva.total_ventas_efectivo || 0) + totalNum).toFixed(2));
+        } else {
+          cajaGeneralActiva.total_ventas_digital = parseFloat((parseFloat(cajaGeneralActiva.total_ventas_digital || 0) + totalNum).toFixed(2));
+        }
+        await cajaGeneralActiva.save();
+
+        await CajaMovimientoGeneral.create({
+          empresa_id: empresaId,
+          sucursal_id: req.sucursal_id || null,
+          id_caja: cajaGeneralActiva.id,
+          id_usuario: req.user?.id || 1,
+          tipo: 'ingreso',
+          concepto: `Facturación Hospedaje ${numero}`,
+          monto: totalNum,
+          metodo_pago,
+          origen_modulo: 'hospedaje',
+          ref_legacy_id: factura.id,
+        });
+      }
+    } catch (cajaGenErr) {
+      console.warn('⚠️ No se pudo registrar en CajaGeneral hospedaje:', cajaGenErr.message);
+    }
 
     res.status(201).json({ success: true, data: factura, message: 'Comprobante emitido con éxito' });
   } catch (error) {

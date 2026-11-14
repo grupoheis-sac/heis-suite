@@ -1,4 +1,5 @@
 import { Empresa, Usuario, Sucursal, AuditoriaLog, Comunicado, PlanSaaS, sequelize } from '../models/index.js';
+import { invalidateEmpresaCache } from '../context/tenantContext.js';
 import bcrypt from 'bcryptjs';
 import { Op } from 'sequelize';
 import os from 'os';
@@ -233,6 +234,7 @@ export async function actualizarEmpresa(req, res) {
     if (activo !== undefined) empresa.activo = Boolean(activo);
 
     await empresa.save();
+    invalidateEmpresaCache(empresa.id);
 
     await registrarEventoAuditoria(req, {
       empresa_id: empresa.id,
@@ -370,6 +372,7 @@ export async function actualizarModulosEmpresa(req, res) {
     if (color_brand !== undefined) empresa.color_brand = color_brand;
 
     await empresa.save();
+    invalidateEmpresaCache(empresa.id);
 
     await registrarEventoAuditoria(req, {
       empresa_id: empresa.id,
@@ -410,6 +413,7 @@ export async function actualizarSubmodulosEmpresa(req, res) {
     }
 
     await empresa.save();
+    invalidateEmpresaCache(empresa.id);
 
     await registrarEventoAuditoria(req, {
       empresa_id: empresa.id,
@@ -438,6 +442,7 @@ export async function toggleEstadoEmpresa(req, res) {
 
     empresa.activo = !empresa.activo;
     await empresa.save();
+    invalidateEmpresaCache(empresa.id);
 
     await registrarEventoAuditoria(req, {
       empresa_id: empresa.id,
@@ -1764,6 +1769,7 @@ export async function actualizarPermisosBotones(req, res) {
 
     empresa.permisos_botones = catalogo;
     await empresa.save();
+    invalidateEmpresaCache(empresa.id);
 
     await registrarEventoAuditoria(req, {
       empresa_id: empresa.id,
@@ -1812,6 +1818,7 @@ export async function restablecerPermisosBotones(req, res) {
 
     empresa.permisos_botones = null;
     await empresa.save();
+    invalidateEmpresaCache(empresa.id);
 
     await registrarEventoAuditoria(req, {
       empresa_id: empresa.id,
@@ -1954,6 +1961,7 @@ export async function guardarConfigWhitelabel(req, res) {
     if (config.colorPrimario) empresa.color_brand = config.colorPrimario;
     if (config.logoUrl) empresa.logo_url = config.logoUrl;
     await empresa.save();
+    invalidateEmpresaCache(empresa.id);
 
     await registrarEventoAuditoria(req, {
       empresa_id: empresa.id,

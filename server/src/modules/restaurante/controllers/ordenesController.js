@@ -1,6 +1,6 @@
 import sequelize from '../../../config/db.js';
 import { Orden, OrdenDetalle, Mesa, Producto } from '../models/index.js';
-import { Usuario } from '../../../core/models/index.js';
+import { Usuario, CajaGeneral, CajaMovimientoGeneral } from '../../../core/models/index.js';
 import { registrarAuditoria } from '../../../core/middleware/auditoria.middleware.js';
 
 export const agregarItemsAMesa = async (req, res, next) => {
@@ -230,6 +230,58 @@ export const cobrarOrden = async (req, res, next) => {
       if (prod && prod.stock !== null && prod.stock > 0) {
         await prod.decrement('stock', { by: det.quantity, transaction: t });
       }
+    }
+
+    // Impactar en Caja General activa (core_cajas)
+    try {
+      const cajaActiva = await CajaGeneral.findOne({
+        where: {
+          empresa_id: req.empresa_id,
+          estado: 'abierta',
+          ...(req.sucursal_id ? { sucursal_id: req.sucursal_id } : {}),
+        },
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+
+      if (cajaActiva) {
+        let efectivoSumar = 0;
+        let digitalSumar = 0;
+        if (payment_method === 'cash' || payment_method === 'Efectivo') {
+          efectivoSumar = totalFinal;
+        } else if (payment_method === 'mixto' || payment_method === 'split') {
+          efectivoSumar = parseFloat(monto_efectivo) || 0;
+          digitalSumar = parseFloat(monto_digital) || 0;
+        } else {
+          digitalSumar = totalFinal;
+        }
+
+        if (efectivoSumar > 0) {
+          cajaActiva.total_ventas_efectivo = parseFloat((parseFloat(cajaActiva.total_ventas_efectivo || 0) + efectivoSumar).toFixed(2));
+        }
+        if (digitalSumar > 0) {
+          cajaActiva.total_ventas_digital = parseFloat((parseFloat(cajaActiva.total_ventas_digital || 0) + digitalSumar).toFixed(2));
+        }
+        await cajaActiva.save({ transaction: t });
+
+        await CajaMovimientoGeneral.create(
+          {
+            empresa_id: req.empresa_id,
+            sucursal_id: req.sucursal_id || null,
+            id_caja: cajaActiva.id,
+            id_usuario: req.user?.id || orden.user_id || 1,
+            tipo: 'ingreso',
+            concepto: `Cobro Orden #${orden.id} (${document_type}) - ${client_name}`,
+            monto: totalFinal,
+            metodo_pago: payment_method,
+            origen_modulo: 'restaurante',
+            ref_legacy_id: orden.id,
+          },
+          { transaction: t }
+        );
+      }
+    } catch (cajaErr) {
+      console.warn('⚠️ No se pudo registrar automáticamente en Caja General:', cajaErr.message);
     }
 
     await t.commit();

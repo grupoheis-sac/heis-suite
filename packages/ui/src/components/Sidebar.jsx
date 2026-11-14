@@ -178,6 +178,12 @@ export default function Sidebar({
   const hasBotica = modulosActivos.includes('botica');
   const hasHospedaje = modulosActivos.includes('hospedaje');
 
+  const submodulosMap = typeof empresa?.submodulos_activos === 'string'
+    ? (() => { try { return JSON.parse(empresa.submodulos_activos || '{}'); } catch { return {}; } })()
+    : (empresa?.submodulos_activos || {});
+
+  const canShowSub = (subId) => submodulosMap[subId] !== false;
+
   // Estilos y badges
   const getMainItemClass = (isActive) =>
     `group sidebar-nav-item flex items-center gap-2.5 px-3 py-2 rounded-2xl text-xs transition-all duration-200 ease-out cursor-pointer whitespace-nowrap select-none active:scale-[0.98] relative z-10 ${isActive
@@ -419,22 +425,24 @@ export default function Sidebar({
                     <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
                     <span>Mesas y Salón (F1)</span>
                   </NavLink>
-                  <NavLink
-                    to="/cocina"
-                    onClick={onItemClick}
-                    className={({ isActive }) =>
-                      `px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors flex items-center justify-between ${isActive
-                        ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300 font-bold border border-amber-500/20 shadow-2xs'
-                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100/50 dark:hover:bg-white/[0.03]'
-                      }`
-                    }
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
-                      <span>Cocina (KDS)</span>
-                    </div>
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  </NavLink>
+                  {canShowSub('cocina') && (
+                    <NavLink
+                      to="/cocina"
+                      onClick={onItemClick}
+                      className={({ isActive }) =>
+                        `px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors flex items-center justify-between ${isActive
+                          ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300 font-bold border border-amber-500/20 shadow-2xs'
+                          : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100/50 dark:hover:bg-white/[0.03]'
+                        }`
+                      }
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+                        <span>Cocina (KDS)</span>
+                      </div>
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    </NavLink>
+                  )}
                   <NavLink
                     to="/ordenes"
                     onClick={onItemClick}
@@ -459,19 +467,23 @@ export default function Sidebar({
               </NavLink>
             </div>
 
-            <div data-expanded-nav="reservas" className="relative">
-              <NavLink to="/reservas" onClick={onItemClick} className={getMainItemClass(isReservasActive)}>
-                {renderIconBadge(CalendarCheck, 'text-amber-500 dark:text-amber-400', 'text-slate-400 dark:text-slate-500', isReservasActive)}
-                <span className="flex-1 font-semibold">Reservas</span>
-              </NavLink>
-            </div>
+            {canShowSub('reservas') && (
+              <div data-expanded-nav="reservas" className="relative">
+                <NavLink to="/reservas" onClick={onItemClick} className={getMainItemClass(isReservasActive)}>
+                  {renderIconBadge(CalendarCheck, 'text-amber-500 dark:text-amber-400', 'text-slate-400 dark:text-slate-500', isReservasActive)}
+                  <span className="flex-1 font-semibold">Reservas</span>
+                </NavLink>
+              </div>
+            )}
 
-            <div data-expanded-nav="gastos" className="relative">
-              <NavLink to="/gastos" onClick={onItemClick} className={getMainItemClass(isGastosActive)}>
-                {renderIconBadge(TrendingDown, 'text-amber-500 dark:text-amber-400', 'text-slate-400 dark:text-slate-500', isGastosActive)}
-                <span className="flex-1 font-semibold">Gastos de Caja</span>
-              </NavLink>
-            </div>
+            {canShowSub('gastos') && (
+              <div data-expanded-nav="gastos" className="relative">
+                <NavLink to="/gastos" onClick={onItemClick} className={getMainItemClass(isGastosActive)}>
+                  {renderIconBadge(TrendingDown, 'text-amber-500 dark:text-amber-400', 'text-slate-400 dark:text-slate-500', isGastosActive)}
+                  <span className="flex-1 font-semibold">Gastos de Caja</span>
+                </NavLink>
+              </div>
+            )}
           </>
         )}
 
@@ -555,47 +567,59 @@ export default function Sidebar({
               </NavLink>
             </div>
 
-            <div data-expanded-nav="botica-meds" className="relative">
-              <NavLink to="/medicamentos" onClick={onItemClick} className={getMainItemClass(isMedicamentosActive)}>
-                {renderIconBadge(Boxes, 'text-emerald-500 dark:text-emerald-400', 'text-slate-400 dark:text-slate-500', isMedicamentosActive)}
-                <span className="flex-1 font-semibold">Medicamentos & DCI</span>
-              </NavLink>
-            </div>
+            {canShowSub('medicamentos') && (
+              <div data-expanded-nav="botica-meds" className="relative">
+                <NavLink to="/medicamentos" onClick={onItemClick} className={getMainItemClass(isMedicamentosActive)}>
+                  {renderIconBadge(Boxes, 'text-emerald-500 dark:text-emerald-400', 'text-slate-400 dark:text-slate-500', isMedicamentosActive)}
+                  <span className="flex-1 font-semibold">Medicamentos & DCI</span>
+                </NavLink>
+              </div>
+            )}
 
-            <div data-expanded-nav="botica-lotes" className="relative">
-              <NavLink to="/lotes" onClick={onItemClick} className={getMainItemClass(isLotesActive)}>
-                {renderIconBadge(CalendarCheck, 'text-emerald-500 dark:text-emerald-400', 'text-slate-400 dark:text-slate-500', isLotesActive)}
-                <span className="flex-1 font-semibold">Lotes & FEFO</span>
-              </NavLink>
-            </div>
+            {canShowSub('lotes_fefo') && (
+              <div data-expanded-nav="botica-lotes" className="relative">
+                <NavLink to="/lotes" onClick={onItemClick} className={getMainItemClass(isLotesActive)}>
+                  {renderIconBadge(CalendarCheck, 'text-emerald-500 dark:text-emerald-400', 'text-slate-400 dark:text-slate-500', isLotesActive)}
+                  <span className="flex-1 font-semibold">Lotes & FEFO</span>
+                </NavLink>
+              </div>
+            )}
 
-            <div data-expanded-nav="botica-inv" className="relative">
-              <NavLink to="/inventario-botica" onClick={onItemClick} className={getMainItemClass(isInventarioBoticaActive)}>
-                {renderIconBadge(Layers, 'text-emerald-500 dark:text-emerald-400', 'text-slate-400 dark:text-slate-500', isInventarioBoticaActive)}
-                <span className="flex-1 font-semibold">Inventario & Kardex</span>
-              </NavLink>
-            </div>
+            {canShowSub('inventario_botica') && (
+              <div data-expanded-nav="botica-inv" className="relative">
+                <NavLink to="/inventario-botica" onClick={onItemClick} className={getMainItemClass(isInventarioBoticaActive)}>
+                  {renderIconBadge(Layers, 'text-emerald-500 dark:text-emerald-400', 'text-slate-400 dark:text-slate-500', isInventarioBoticaActive)}
+                  <span className="flex-1 font-semibold">Inventario & Kardex</span>
+                </NavLink>
+              </div>
+            )}
 
-            <div data-expanded-nav="botica-temp" className="relative">
-              <NavLink to="/temperatura" onClick={onItemClick} className={getMainItemClass(isTemperaturaActive)}>
-                {renderIconBadge(Flame, 'text-emerald-500 dark:text-emerald-400', 'text-slate-400 dark:text-slate-500', isTemperaturaActive)}
-                <span className="flex-1 font-semibold">Temperatura & Humedad BPA</span>
-              </NavLink>
-            </div>
+            {canShowSub('temperatura') && (
+              <div data-expanded-nav="botica-temp" className="relative">
+                <NavLink to="/temperatura" onClick={onItemClick} className={getMainItemClass(isTemperaturaActive)}>
+                  {renderIconBadge(Flame, 'text-emerald-500 dark:text-emerald-400', 'text-slate-400 dark:text-slate-500', isTemperaturaActive)}
+                  <span className="flex-1 font-semibold">Temperatura & Humedad BPA</span>
+                </NavLink>
+              </div>
+            )}
 
-            <div data-expanded-nav="botica-digemid" className="relative">
-              <NavLink to="/digemid" onClick={onItemClick} className={getMainItemClass(isDigemidActive)}>
-                {renderIconBadge(FileText, 'text-emerald-500 dark:text-emerald-400', 'text-slate-400 dark:text-slate-500', isDigemidActive)}
-                <span className="flex-1 font-semibold">Catálogo DIGEMID OPM</span>
-              </NavLink>
-            </div>
+            {canShowSub('digemid_opm') && (
+              <div data-expanded-nav="botica-digemid" className="relative">
+                <NavLink to="/digemid" onClick={onItemClick} className={getMainItemClass(isDigemidActive)}>
+                  {renderIconBadge(FileText, 'text-emerald-500 dark:text-emerald-400', 'text-slate-400 dark:text-slate-500', isDigemidActive)}
+                  <span className="flex-1 font-semibold">Catálogo DIGEMID OPM</span>
+                </NavLink>
+              </div>
+            )}
 
-            <div data-expanded-nav="botica-bajas" className="relative">
-              <NavLink to="/bajas-sanitarias" onClick={onItemClick} className={getMainItemClass(isBajasActive)}>
-                {renderIconBadge(TrendingDown, 'text-emerald-500 dark:text-emerald-400', 'text-slate-400 dark:text-slate-500', isBajasActive)}
-                <span className="flex-1 font-semibold">Bajas & Cuarentena</span>
-              </NavLink>
-            </div>
+            {canShowSub('bajas_cuarentena') && (
+              <div data-expanded-nav="botica-bajas" className="relative">
+                <NavLink to="/bajas-sanitarias" onClick={onItemClick} className={getMainItemClass(isBajasActive)}>
+                  {renderIconBadge(TrendingDown, 'text-emerald-500 dark:text-emerald-400', 'text-slate-400 dark:text-slate-500', isBajasActive)}
+                  <span className="flex-1 font-semibold">Bajas & Cuarentena</span>
+                </NavLink>
+              </div>
+            )}
           </>
         )}
 
@@ -617,40 +641,50 @@ export default function Sidebar({
               </NavLink>
             </div>
 
-            <div data-expanded-nav="hospedaje-reservas" className="relative">
-              <NavLink to="/reservas-hotel" onClick={onItemClick} className={getMainItemClass(isReservasHotelActive)}>
-                {renderIconBadge(CalendarCheck, 'text-violet-500 dark:text-violet-400', 'text-slate-400 dark:text-slate-500', isReservasHotelActive)}
-                <span className="flex-1 font-semibold">Reservas & Calendario</span>
-              </NavLink>
-            </div>
+            {canShowSub('reservas_hotel') && (
+              <div data-expanded-nav="hospedaje-reservas" className="relative">
+                <NavLink to="/reservas-hotel" onClick={onItemClick} className={getMainItemClass(isReservasHotelActive)}>
+                  {renderIconBadge(CalendarCheck, 'text-violet-500 dark:text-violet-400', 'text-slate-400 dark:text-slate-500', isReservasHotelActive)}
+                  <span className="flex-1 font-semibold">Reservas & Calendario</span>
+                </NavLink>
+              </div>
+            )}
 
-            <div data-expanded-nav="hospedaje-huespedes" className="relative">
-              <NavLink to="/huespedes" onClick={onItemClick} className={getMainItemClass(isHuespedesActive)}>
-                {renderIconBadge(Users, 'text-violet-500 dark:text-violet-400', 'text-slate-400 dark:text-slate-500', isHuespedesActive)}
-                <span className="flex-1 font-semibold">Huéspedes & MINCETUR</span>
-              </NavLink>
-            </div>
+            {canShowSub('huespedes') && (
+              <div data-expanded-nav="hospedaje-huespedes" className="relative">
+                <NavLink to="/huespedes" onClick={onItemClick} className={getMainItemClass(isHuespedesActive)}>
+                  {renderIconBadge(Users, 'text-violet-500 dark:text-violet-400', 'text-slate-400 dark:text-slate-500', isHuespedesActive)}
+                  <span className="flex-1 font-semibold">Huéspedes & MINCETUR</span>
+                </NavLink>
+              </div>
+            )}
 
-            <div data-expanded-nav="hospedaje-limpieza" className="relative">
-              <NavLink to="/limpieza-hotel" onClick={onItemClick} className={getMainItemClass(isLimpiezaHotelActive)}>
-                {renderIconBadge(Sparkles, 'text-violet-500 dark:text-violet-400', 'text-slate-400 dark:text-slate-500', isLimpiezaHotelActive)}
-                <span className="flex-1 font-semibold">Limpieza & Housekeeping</span>
-              </NavLink>
-            </div>
+            {canShowSub('limpieza') && (
+              <div data-expanded-nav="hospedaje-limpieza" className="relative">
+                <NavLink to="/limpieza-hotel" onClick={onItemClick} className={getMainItemClass(isLimpiezaHotelActive)}>
+                  {renderIconBadge(Sparkles, 'text-violet-500 dark:text-violet-400', 'text-slate-400 dark:text-slate-500', isLimpiezaHotelActive)}
+                  <span className="flex-1 font-semibold">Limpieza & Housekeeping</span>
+                </NavLink>
+              </div>
+            )}
 
-            <div data-expanded-nav="hospedaje-tarifas" className="relative">
-              <NavLink to="/tarifas-hotel" onClick={onItemClick} className={getMainItemClass(isTarifasHotelActive)}>
-                {renderIconBadge(Sliders, 'text-violet-500 dark:text-violet-400', 'text-slate-400 dark:text-slate-500', isTarifasHotelActive)}
-                <span className="flex-1 font-semibold">Tarifas & Temporadas</span>
-              </NavLink>
-            </div>
+            {canShowSub('tarifas') && (
+              <div data-expanded-nav="hospedaje-tarifas" className="relative">
+                <NavLink to="/tarifas-hotel" onClick={onItemClick} className={getMainItemClass(isTarifasHotelActive)}>
+                  {renderIconBadge(Sliders, 'text-violet-500 dark:text-violet-400', 'text-slate-400 dark:text-slate-500', isTarifasHotelActive)}
+                  <span className="flex-1 font-semibold">Tarifas & Temporadas</span>
+                </NavLink>
+              </div>
+            )}
 
-            <div data-expanded-nav="hospedaje-pisos" className="relative">
-              <NavLink to="/pisos-hotel" onClick={onItemClick} className={getMainItemClass(isPisosHotelActive)}>
-                {renderIconBadge(Layers, 'text-violet-500 dark:text-violet-400', 'text-slate-400 dark:text-slate-500', isPisosHotelActive)}
-                <span className="flex-1 font-semibold">Pisos & Estructura</span>
-              </NavLink>
-            </div>
+            {canShowSub('pisos') && (
+              <div data-expanded-nav="hospedaje-pisos" className="relative">
+                <NavLink to="/pisos-hotel" onClick={onItemClick} className={getMainItemClass(isPisosHotelActive)}>
+                  {renderIconBadge(Layers, 'text-violet-500 dark:text-violet-400', 'text-slate-400 dark:text-slate-500', isPisosHotelActive)}
+                  <span className="flex-1 font-semibold">Pisos & Estructura</span>
+                </NavLink>
+              </div>
+            )}
 
             <div data-expanded-nav="hospedaje-caja" className="relative">
               <NavLink to="/caja-hotel" onClick={onItemClick} className={getMainItemClass(isCajaHotelActive)}>
@@ -659,12 +693,14 @@ export default function Sidebar({
               </NavLink>
             </div>
 
-            <div data-expanded-nav="hospedaje-pos" className="relative">
-              <NavLink to="/pos-hotel" onClick={onItemClick} className={getMainItemClass(isPosHotelActive)}>
-                {renderIconBadge(ShoppingBag, 'text-violet-500 dark:text-violet-400', 'text-slate-400 dark:text-slate-500', isPosHotelActive)}
-                <span className="flex-1 font-semibold">Frigobar & Room Service</span>
-              </NavLink>
-            </div>
+            {canShowSub('pos_hotel') && (
+              <div data-expanded-nav="hospedaje-pos" className="relative">
+                <NavLink to="/pos-hotel" onClick={onItemClick} className={getMainItemClass(isPosHotelActive)}>
+                  {renderIconBadge(ShoppingBag, 'text-violet-500 dark:text-violet-400', 'text-slate-400 dark:text-slate-500', isPosHotelActive)}
+                  <span className="flex-1 font-semibold">Frigobar & Room Service</span>
+                </NavLink>
+              </div>
+            )}
           </>
         )}
 
@@ -674,6 +710,17 @@ export default function Sidebar({
             <span className="text-sm leading-none select-none">⚙️</span>
             <span>Gestión Suite</span>
           </span>
+        </div>
+
+        <div data-expanded-nav="core-caja" className="relative">
+          <NavLink
+            to="/caja"
+            onClick={onItemClick}
+            className={getMainItemClass(location.pathname.startsWith('/caja'))}
+          >
+            {renderIconBadge(Wallet, 'text-emerald-500 dark:text-emerald-400', 'text-slate-400 dark:text-slate-500', location.pathname.startsWith('/caja'))}
+            <span className="flex-1 font-semibold">Caja & Historial Turnos</span>
+          </NavLink>
         </div>
 
         {esAdmin && (
@@ -949,6 +996,15 @@ export default function Sidebar({
                     <Hotel className={`w-5 h-5 ${isHabitacionesActive ? 'text-violet-500 dark:text-violet-400' : 'text-slate-400'}`} />
                   </button>
                 )}
+
+                <button
+                  data-collapsed-category="caja"
+                  onClick={() => navigate('/caja')}
+                  className={getCollapsedItemClass(location.pathname.startsWith('/caja'))}
+                  data-tooltip="Caja & Historial Turnos"
+                >
+                  <Wallet className={`w-5 h-5 ${location.pathname.startsWith('/caja') ? 'text-emerald-500 dark:text-emerald-400' : 'text-slate-400'}`} />
+                </button>
 
                 {esAdmin && (
                   <button

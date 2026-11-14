@@ -1,5 +1,5 @@
 import { Gasto } from '../models/index.js';
-import { Usuario } from '../../../core/models/index.js';
+import { Usuario, CajaGeneral, CajaMovimientoGeneral } from '../../../core/models/index.js';
 import { registrarAuditoria } from '../../../core/middleware/auditoria.middleware.js';
 
 export const getGastos = async (req, res, next) => {
@@ -29,6 +29,36 @@ export const registrarGasto = async (req, res, next) => {
       amount: parseFloat(amount),
       category,
     });
+
+    // Impactar en Caja General activa (core_cajas)
+    try {
+      const cajaActiva = await CajaGeneral.findOne({
+        where: {
+          empresa_id: req.empresa_id,
+          estado: 'abierta',
+          ...(req.sucursal_id ? { sucursal_id: req.sucursal_id } : {}),
+        },
+      });
+      if (cajaActiva) {
+        cajaActiva.total_gastos = parseFloat((parseFloat(cajaActiva.total_gastos || 0) + parseFloat(amount)).toFixed(2));
+        await cajaActiva.save();
+
+        await CajaMovimientoGeneral.create({
+          empresa_id: req.empresa_id,
+          sucursal_id: req.sucursal_id || null,
+          id_caja: cajaActiva.id,
+          id_usuario: req.user ? req.user.id : null,
+          tipo: 'egreso',
+          concepto: `Gasto: ${description} (${category})`,
+          monto: parseFloat(amount),
+          metodo_pago: 'Efectivo',
+          origen_modulo: 'restaurante',
+          ref_legacy_id: gasto.id,
+        });
+      }
+    } catch (cajaErr) {
+      console.warn('⚠️ No se pudo registrar gasto en Caja General:', cajaErr.message);
+    }
 
     await registrarAuditoria({
       modulo: 'restaurante',

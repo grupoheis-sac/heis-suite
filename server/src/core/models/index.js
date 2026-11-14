@@ -6,6 +6,8 @@ import Sucursal from './Sucursal.js';
 import AuditoriaLog from './AuditoriaLog.js';
 import Comunicado from './Comunicado.js';
 import PlanSaaS from './PlanSaaS.js';
+import CajaGeneral from './CajaGeneral.js';
+import CajaMovimientoGeneral from './CajaMovimientoGeneral.js';
 
 // Relaciones Multi-Tenant Core
 Empresa.hasMany(Sucursal, { foreignKey: 'empresa_id', as: 'sucursales', onDelete: 'CASCADE' });
@@ -32,6 +34,19 @@ AuditoriaLog.belongsTo(Usuario, { foreignKey: 'usuario_id', as: 'usuario' });
 Empresa.hasMany(Comunicado, { foreignKey: 'empresa_id', as: 'comunicados', onDelete: 'CASCADE' });
 Comunicado.belongsTo(Empresa, { foreignKey: 'empresa_id', as: 'empresa' });
 
+// Relaciones de Caja Transversal Unificada
+Empresa.hasMany(CajaGeneral, { foreignKey: 'empresa_id', as: 'cajas', onDelete: 'CASCADE' });
+CajaGeneral.belongsTo(Empresa, { foreignKey: 'empresa_id', as: 'empresa' });
+
+Usuario.hasMany(CajaGeneral, { foreignKey: 'id_usuario', as: 'cajas_aperturadas' });
+CajaGeneral.belongsTo(Usuario, { foreignKey: 'id_usuario', as: 'usuario' });
+
+CajaGeneral.hasMany(CajaMovimientoGeneral, { foreignKey: 'id_caja', as: 'movimientos', onDelete: 'CASCADE' });
+CajaMovimientoGeneral.belongsTo(CajaGeneral, { foreignKey: 'id_caja', as: 'caja' });
+
+Usuario.hasMany(CajaMovimientoGeneral, { foreignKey: 'id_usuario', as: 'movimientos_caja' });
+CajaMovimientoGeneral.belongsTo(Usuario, { foreignKey: 'id_usuario', as: 'usuario' });
+
 export {
   sequelize,
   Empresa,
@@ -41,6 +56,8 @@ export {
   AuditoriaLog,
   Comunicado,
   PlanSaaS,
+  CajaGeneral,
+  CajaMovimientoGeneral,
 };
 
 export default {
@@ -52,5 +69,6 @@ export default {
   AuditoriaLog,
   Comunicado,
   PlanSaaS,
+  CajaGeneral,
+  CajaMovimientoGeneral,
 };
-

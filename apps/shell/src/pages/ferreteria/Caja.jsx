@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import api from './api';
+import api from './cajaApi';
 import toast from 'react-hot-toast';
 import { useCajaStore } from './store/cajaStore';
 import { useAuthStore } from '@heis/core';

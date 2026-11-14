@@ -18,11 +18,11 @@ services:
       timeout: 5s
       retries: 5
 
-  server:
+  heis-app:
     build:
-      context: ./server
+      context: .
       dockerfile: Dockerfile
-    container_name: heis_suite_backend
+    container_name: heis_suite_unified_app
     restart: always
     depends_on:
       db:
@@ -38,19 +38,8 @@ services:
       JWT_SECRET: heis_suite_super_secure_jwt_token_key_2026_enterprise_saas
       CLIENT_URL: http://localhost:80
     ports:
+      - "80:4000"
       - "4000:4000"
-
-  shell:
-    build:
-      context: .
-      dockerfile: apps/shell/Dockerfile
-    container_name: heis_suite_frontend
-    restart: always
-    ports:
-      - "80:80"
-    depends_on:
-      - server
 
 volumes:
   heis_mysql_data:
-

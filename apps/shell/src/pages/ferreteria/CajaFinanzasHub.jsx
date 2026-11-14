@@ -1,6 +1,6 @@
 import React, { Suspense, lazy } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { useAuthStore } from '@heis/core';
+import { useAuthStore, useModulos } from '@heis/core';
 import {
  Wallet,
  Clock,
@@ -36,11 +36,13 @@ function TabLoader() {
 export default function CajaFinanzasHub() {
  const [searchParams, setSearchParams] = useSearchParams();
  const { user } = useAuthStore();
+ const modulos = useModulos();
+ const hasFerreteria = Boolean(modulos?.ferreteria);
  const esCajero = user?.rol === 'Cajero';
  const rawTab = searchParams.get('tab') || 'caja';
- const pestañasValidas = esCajero
-  ? ['caja', 'turnos', 'creditos', 'cobrar']
-  : ['caja', 'turnos', 'creditos', 'cobrar', 'pagar'];
+ const pestañasValidas = !hasFerreteria
+  ? ['caja', 'turnos']
+  : (esCajero ? ['caja', 'turnos', 'creditos', 'cobrar'] : ['caja', 'turnos', 'creditos', 'cobrar', 'pagar']);
 
  const activeTab = pestañasValidas.includes(rawTab) ? rawTab : 'caja';
 
@@ -76,9 +78,9 @@ export default function CajaFinanzasHub() {
  }
  ];
 
- const tabs = esCajero
-  ? todasLasPestañas.filter(t => t.id !== 'pagar')
-  : todasLasPestañas;
+ const tabs = !hasFerreteria
+  ? todasLasPestañas.filter(t => t.id === 'caja' || t.id === 'turnos')
+  : (esCajero ? todasLasPestañas.filter(t => t.id !== 'pagar') : todasLasPestañas);
 
  const handleTabChange = (tabId) => {
  setSearchParams({ tab: tabId });

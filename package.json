@@ -13,7 +13,8 @@
     "dev:server": "npm --prefix server run dev",
     "dev:shell": "npm --prefix apps/shell run dev",
     "build": "npm --prefix apps/shell run build",
-    "seed": "npm --prefix server run seed"
+    "seed": "npm --prefix server run seed",
+    "migrate:cajas": "node server/src/migrations/migration_unificar_cajas.js"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
