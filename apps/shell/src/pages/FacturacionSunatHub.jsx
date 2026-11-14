@@ -10,11 +10,12 @@ import {
   PlusCircle,
   RotateCcw,
   ShieldCheck,
-  QrCode,
-  Building2,
   Receipt,
   Code2,
-  Sparkles,
+  FileSpreadsheet,
+  Calendar,
+  Wallet,
+  Boxes,
   X
 } from 'lucide-react';
 
@@ -30,6 +31,11 @@ export default function FacturacionSunatHub() {
     notas_credito: 0,
   });
   const [loading, setLoading] = useState(true);
+
+  const [periodoContable, setPeriodoContable] = useState(() =>
+    new Date().toISOString().slice(0, 7)
+  );
+  const [descargandoReporte, setDescargandoReporte] = useState(null);
 
   const [filtroModulo, setFiltroModulo] = useState('TODOS');
   const [filtroTipo, setFiltroTipo] = useState('TODOS');
@@ -84,6 +90,38 @@ export default function FacturacionSunatHub() {
         c.cliente_num_doc?.toLowerCase().includes(q)
     );
   }, [comprobantes, busqueda]);
+
+  const handleDescargarLibroContable = async (endpoint, defaultFilename, label) => {
+    try {
+      setDescargandoReporte(endpoint);
+      const res = await api.get(`/core/facturacion/reportes/${endpoint}`, {
+        params: {
+          periodo: periodoContable,
+          origen_modulo: filtroModulo,
+        },
+        responseType: 'blob',
+      });
+
+      const disposition = res.headers?.['content-disposition'] || '';
+      const match = disposition.match(/filename="?([^"]+)"?/);
+      const filename = match?.[1] || defaultFilename;
+
+      const blobUrl = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(blobUrl);
+
+      toast.success(`${label} (${periodoContable}) descargado con éxito`);
+    } catch (error) {
+      toast.error(`Error al exportar ${label}`);
+    } finally {
+      setDescargandoReporte(null);
+    }
+  };
 
   const handleBuscarRucDni = async () => {
     const doc = nuevoCpe.cliente_documento.trim();
@@ -204,19 +242,19 @@ export default function FacturacionSunatHub() {
       <div className="p-4 sm:p-5 rounded-3xl bg-white dark:bg-[#0d1527] border border-slate-200/80 dark:border-white/10 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="flex items-center gap-3">
           <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-500 text-white flex items-center justify-center shadow-md shadow-emerald-500/20">
-            <FileText className="w-5 h-5"/>
+            <FileText className="w-5 h-5" />
           </div>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white font-heading">
-                Facturación Electrónica SUNAT (UBL 2.1)
+                Facturación Electrónica SUNAT (UBL 2.1) & Libros Contables
               </h1>
               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
                 Entorno {(empresa?.entorno_sunat || 'beta').toUpperCase()}
               </span>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Central unificada de Facturas (01), Boletas (03), Notas de Crédito (07), XML Firmado y CDR para todos tus módulos activos
+              Central unificada de Facturas (01), Boletas (03), Notas de Crédito (07), Formato 14.1, PLE y Kardex 13.1
             </p>
           </div>
         </div>
@@ -225,9 +263,103 @@ export default function FacturacionSunatHub() {
           onClick={() => setModalEmitir(true)}
           className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-bold text-xs shadow-md shadow-emerald-500/20 flex items-center gap-2 cursor-pointer transition-all"
         >
-          <PlusCircle className="w-4 h-4"/>
+          <PlusCircle className="w-4 h-4" />
           <span>Emitir Comprobante CPE</span>
         </button>
+      </div>
+
+      {/* Barra de Exportación Contable Tributaria SUNAT */}
+      <div className="p-4 rounded-3xl bg-gradient-to-r from-slate-900 via-slate-900 to-indigo-950 text-white border border-white/10 shadow-md flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 rounded-2xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-300">
+            <FileSpreadsheet className="w-5 h-5" />
+          </div>
+          <div>
+            <h2 className="text-xs sm:text-sm font-black uppercase tracking-wider text-emerald-300">
+              Centro de Exportación para Contabilidad & Declaración SUNAT
+            </h2>
+            <p className="text-[11px] text-slate-300">
+              Descarga directa en Excel (.CSV) y PLE (.TXT) del período tributario seleccionado
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap w-full lg:w-auto">
+          <div className="flex items-center gap-1.5 bg-white/10 border border-white/15 px-3 py-1.5 rounded-xl text-xs">
+            <Calendar className="w-3.5 h-3.5 text-amber-400" />
+            <span className="text-[11px] font-bold text-slate-300">Período:</span>
+            <input
+              type="month"
+              value={periodoContable}
+              onChange={(e) => setPeriodoContable(e.target.value)}
+              className="bg-transparent text-white font-mono font-bold text-xs focus:outline-none"
+            />
+          </div>
+
+          <button
+            type="button"
+            disabled={descargandoReporte === 'ventas-14-1-csv'}
+            onClick={() =>
+              handleDescargarLibroContable(
+                'ventas-14-1-csv',
+                `FORMATO_14_1_${periodoContable}.csv`,
+                'Registro de Ventas 14.1 (Excel CSV)'
+              )
+            }
+            className="px-3 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer transition-all shadow-xs"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>Ventas 14.1 (Excel)</span>
+          </button>
+
+          <button
+            type="button"
+            disabled={descargandoReporte === 'ple-14-1-txt'}
+            onClick={() =>
+              handleDescargarLibroContable(
+                'ple-14-1-txt',
+                `PLE_140100_${periodoContable}.txt`,
+                'Libro Electrónico PLE 14.1 (.TXT)'
+              )
+            }
+            className="px-3 py-2 rounded-xl bg-indigo-500 hover:bg-indigo-600 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer transition-all shadow-xs"
+          >
+            <FileText className="w-3.5 h-3.5" />
+            <span>PLE 14.1 (.TXT)</span>
+          </button>
+
+          <button
+            type="button"
+            disabled={descargandoReporte === 'kardex-13-1-csv'}
+            onClick={() =>
+              handleDescargarLibroContable(
+                'kardex-13-1-csv',
+                `KARDEX_13_1_${periodoContable}.csv`,
+                'Kardex Valorizado 13.1 (Excel CSV)'
+              )
+            }
+            className="px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs flex items-center gap-1.5 cursor-pointer transition-all shadow-xs"
+          >
+            <Boxes className="w-3.5 h-3.5" />
+            <span>Kardex 13.1 (Excel)</span>
+          </button>
+
+          <button
+            type="button"
+            disabled={descargandoReporte === 'arqueos-caja-csv'}
+            onClick={() =>
+              handleDescargarLibroContable(
+                'arqueos-caja-csv',
+                `ARQUEOS_CAJA_${periodoContable}.csv`,
+                'Libro Caja y Arqueos (Excel CSV)'
+              )
+            }
+            className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer transition-all border border-white/15"
+          >
+            <Wallet className="w-3.5 h-3.5 text-sky-400" />
+            <span>Arqueos Caja</span>
+          </button>
+        </div>
       </div>
 
       {/* KPIs Tributarios */}
@@ -243,7 +375,7 @@ export default function FacturacionSunatHub() {
         </div>
 
         <div className="p-4 rounded-3xl bg-white dark:bg-[#0d1527] border border-slate-200/80 dark:border-white/10">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">IGV (18%) Acumulado</span>
+          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">IGV (18%) Débito Fiscal</span>
           <div className="text-2xl font-black text-indigo-600 dark:text-indigo-400 mt-1 font-mono">
             S/ {Number(resumen.total_igv).toFixed(2)}
           </div>
@@ -270,7 +402,7 @@ export default function FacturacionSunatHub() {
       {/* Filtros */}
       <div className="p-4 rounded-3xl bg-white dark:bg-[#0d1527] border border-slate-200/80 dark:border-white/10 flex flex-col sm:flex-row gap-3 items-center justify-between">
         <div className="relative w-full sm:w-80">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2"/>
+          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             value={busqueda}
@@ -383,9 +515,9 @@ export default function FacturacionSunatHub() {
                         }`}
                       >
                         {c.sunat_estado === 'ACEPTADO' ? (
-                          <CheckCircle2 className="w-3 h-3"/>
+                          <CheckCircle2 className="w-3 h-3" />
                         ) : (
-                          <XCircle className="w-3 h-3"/>
+                          <XCircle className="w-3 h-3" />
                         )}
                         {c.sunat_estado}
                       </span>
@@ -397,7 +529,7 @@ export default function FacturacionSunatHub() {
                           className="px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-[11px] font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1 cursor-pointer"
                           title="Descargar XML UBL 2.1 Firmado"
                         >
-                          <Code2 className="w-3.5 h-3.5 text-indigo-500"/>
+                          <Code2 className="w-3.5 h-3.5 text-indigo-500" />
                           <span>XML</span>
                         </button>
                         <button
@@ -405,7 +537,7 @@ export default function FacturacionSunatHub() {
                           className="px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-[11px] font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1 cursor-pointer"
                           title="Descargar Constancia de Recepción CDR SUNAT"
                         >
-                          <ShieldCheck className="w-3.5 h-3.5 text-emerald-500"/>
+                          <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
                           <span>CDR</span>
                         </button>
                         {c.sunat_estado === 'ACEPTADO' && c.tipo_comprobante !== 'NotaCredito' && (
@@ -414,7 +546,7 @@ export default function FacturacionSunatHub() {
                             className="px-2.5 py-1 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-[11px] font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1 cursor-pointer"
                             title="Emitir Nota de Crédito Electrónica (07)"
                           >
-                            <RotateCcw className="w-3.5 h-3.5"/>
+                            <RotateCcw className="w-3.5 h-3.5" />
                             <span>NC</span>
                           </button>
                         )}
@@ -434,7 +566,7 @@ export default function FacturacionSunatHub() {
           <div className="w-full max-w-lg rounded-3xl bg-white dark:bg-[#111827] border border-slate-200 dark:border-white/10 shadow-2xl p-6 space-y-4">
             <div className="flex items-center justify-between border-b border-slate-200/70 dark:border-white/10 pb-3">
               <div className="flex items-center gap-2">
-                <Receipt className="w-5 h-5 text-emerald-500"/>
+                <Receipt className="w-5 h-5 text-emerald-500" />
                 <h2 className="text-base font-black text-slate-900 dark:text-white">
                   Emitir Comprobante Electrónico UBL 2.1
                 </h2>
@@ -443,7 +575,7 @@ export default function FacturacionSunatHub() {
                 onClick={() => setModalEmitir(false)}
                 className="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:bg-slate-100 dark:hover:bg-white/10"
               >
-                <X className="w-4 h-4"/>
+                <X className="w-4 h-4" />
               </button>
             </div>
 
