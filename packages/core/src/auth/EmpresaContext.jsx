@@ -65,6 +65,7 @@ export function EmpresaProvider({ children }) {
 
   const value = {
     empresa,
+    empresaActiva: empresa,
     user,
     modulos,
     hasSubmodulo,

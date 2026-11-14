@@ -6,7 +6,7 @@ export { default as QuickSearchModal } from './components/QuickSearchModal';
 export { default as GlobalTooltip } from './components/GlobalTooltip';
 export { default as ErrorBoundary } from './components/ErrorBoundary';
 export { default as MobileBottomNav } from './components/MobileBottomNav';
-export { default as UnifiedToastItem } from './components/UnifiedToast';
+export { default as UnifiedToastItem, UnifiedToast } from './components/UnifiedToast';
 export { default as TicketImpresion } from './components/TicketImpresion';
 export { default as SubscriptionStatusBanner } from './components/SubscriptionStatusBanner';
 export { default as DropdownPill } from './components/DropdownPill';

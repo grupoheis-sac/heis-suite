@@ -8,7 +8,13 @@ export {
 export { useAuthStore } from './auth/authStore';
 export { EmpresaProvider, useModulos, useEmpresa, usePermiso, useSubmodulo } from './auth/EmpresaContext';
 export { useSucursalStore } from './store/sucursalStore';
-export { useSettingsStore } from './store/settingsStore';
+export {
+  useSettingsStore,
+  STORAGE_KEYS,
+  getTerminalPrintSettings,
+  saveTerminalPrintSettings,
+  useTerminalPrintSettings,
+} from './store/settingsStore';
 export { createCartStore } from './store/createCartStore';
 export { applyBrandToTab } from './utils/brand';
 export { default as AdministracionHub } from './admin/AdministracionHub';

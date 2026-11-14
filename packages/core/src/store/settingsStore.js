@@ -1,6 +1,73 @@
+import { useState, useEffect, useCallback } from 'react';
 import { create } from 'zustand';
 import api from '../services/api';
 import { applyBrandToTab } from '../utils/brand';
+
+export const STORAGE_KEYS = {
+  PAPER_FORMAT: 'heis_paper_format',
+  PRINT_METHOD: 'heis_print_method',
+  BRIDGE_URL: 'heis_print_bridge_url',
+  PRINTER_NAME: 'heis_printer_name',
+  OPEN_DRAWER: 'heis_open_drawer_default',
+};
+
+export function getTerminalPrintSettings() {
+  if (typeof window === 'undefined') {
+    return {
+      paperFormat: '80mm',
+      printMethod: 'AUTO',
+      bridgeUrl: 'http://127.0.0.1/SERVER_PRINTPOS/PrintDoc.php',
+      printerName: 'POS-80',
+      openCashDrawer: true,
+    };
+  }
+
+  return {
+    paperFormat: localStorage.getItem(STORAGE_KEYS.PAPER_FORMAT) || '80mm',
+    printMethod: localStorage.getItem(STORAGE_KEYS.PRINT_METHOD) || 'AUTO',
+    bridgeUrl:
+      localStorage.getItem(STORAGE_KEYS.BRIDGE_URL) ||
+      'http://127.0.0.1/SERVER_PRINTPOS/PrintDoc.php',
+    printerName: localStorage.getItem(STORAGE_KEYS.PRINTER_NAME) || 'POS-80',
+    openCashDrawer: localStorage.getItem(STORAGE_KEYS.OPEN_DRAWER) !== 'false',
+  };
+}
+
+export function saveTerminalPrintSettings(newSettings) {
+  const current = getTerminalPrintSettings();
+  const merged = { ...current, ...newSettings };
+
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(STORAGE_KEYS.PAPER_FORMAT, merged.paperFormat);
+    localStorage.setItem(STORAGE_KEYS.PRINT_METHOD, merged.printMethod);
+    localStorage.setItem(STORAGE_KEYS.BRIDGE_URL, (merged.bridgeUrl || '').trim());
+    localStorage.setItem(STORAGE_KEYS.PRINTER_NAME, (merged.printerName || '').trim());
+    localStorage.setItem(STORAGE_KEYS.OPEN_DRAWER, String(Boolean(merged.openCashDrawer)));
+
+    window.dispatchEvent(new CustomEvent('heis:print-settings-changed', { detail: merged }));
+  }
+  return merged;
+}
+
+export function useTerminalPrintSettings() {
+  const [settings, setSettings] = useState(() => getTerminalPrintSettings());
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.detail) setSettings(e.detail);
+    };
+    window.addEventListener('heis:print-settings-changed', handler);
+    return () => window.removeEventListener('heis:print-settings-changed', handler);
+  }, []);
+
+  const updateSettings = useCallback((partial) => {
+    const updated = saveTerminalPrintSettings(partial);
+    setSettings(updated);
+    return updated;
+  }, []);
+
+  return { settings, updateSettings };
+}
 
 export const RESTAURANT_LOGIN_PRESETS = [
   {

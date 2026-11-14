@@ -125,4 +125,78 @@ export function UnifiedToastItem({ t, isDark = false }) {
   );
 }
 
+/**
+ * Componente Toast / Banner flotante para uso directo en vistas con estado local
+ */
+export function UnifiedToast({ type = 'info', message, onClose, duration = 4000 }) {
+  useEffect(() => {
+    if (!onClose || !duration) return;
+    const timer = setTimeout(() => {
+      onClose();
+    }, duration);
+    return () => clearTimeout(timer);
+  }, [onClose, duration]);
+
+  const isDark = typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
+
+  const getConfig = () => {
+    switch (type) {
+      case 'success':
+        return {
+          icon: <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 stroke-[2.2]" />,
+          iconBg: 'bg-emerald-500/15 border-emerald-500/30 text-emerald-600 dark:text-emerald-400',
+        };
+      case 'error':
+        return {
+          icon: <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 stroke-[2.2]" />,
+          iconBg: 'bg-rose-500/15 border-rose-500/30 text-rose-600 dark:text-rose-400',
+        };
+      case 'loading':
+        return {
+          icon: <Loader2 className="w-4 h-4 text-[#1CC0F9] shrink-0 animate-spin stroke-[2.2]" />,
+          iconBg: 'bg-[#1CC0F9]/15 border-[#1CC0F9]/30 text-[#1CC0F9]',
+        };
+      case 'info':
+      default:
+        return {
+          icon: <Info className="w-4 h-4 text-sky-600 dark:text-sky-400 shrink-0 stroke-[2.2]" />,
+          iconBg: 'bg-sky-500/15 border-sky-500/30 text-sky-600 dark:text-sky-400',
+        };
+    }
+  };
+
+  const config = getConfig();
+
+  return (
+    <div
+      className={`
+        heis-toast relative flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl border
+        backdrop-blur-xl transition-all duration-200 select-none shadow-lg
+        ${isDark
+          ? 'bg-[#130d33]/95 text-slate-100 border-white/10 ring-1 ring-white/5'
+          : 'bg-white text-slate-900 border-slate-200/90 ring-1 ring-slate-900/10'}
+      `}
+    >
+      <div className={`w-7 h-7 rounded-xl flex items-center justify-center shrink-0 border ${config.iconBg}`}>
+        {config.icon}
+      </div>
+      <div className="flex-1 min-w-0 pr-1">
+        <div className="text-xs sm:text-[12.5px] font-semibold leading-snug break-words">
+          {message}
+        </div>
+      </div>
+      {onClose && (
+        <button
+          type="button"
+          onClick={onClose}
+          className="w-5 h-5 rounded-lg flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 dark:hover:bg-rose-500/20 transition-all shrink-0 cursor-pointer"
+          title="Cerrar notificación"
+        >
+          <X className="w-3 h-3 stroke-[2.2]" />
+        </button>
+      )}
+    </div>
+  );
+}
+
 export default UnifiedToastItem;
