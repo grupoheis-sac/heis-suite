@@ -52,6 +52,8 @@ server/storage/**/*
 *.sqlite
 !server/src/migrations/*.sql
 !migrar_cajas_multitenant.sql
+!tools/load-testing/*.sql
+!scripts/*.sql
 
 # Sistema y editores
 .DS_Store
