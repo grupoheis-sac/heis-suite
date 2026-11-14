@@ -36,7 +36,7 @@ export const ComprobanteElectronico = sequelize.define('ComprobanteElectronico',
     // '01' = Factura, '03' = Boleta, '07' = Nota de Crédito, '08' = Nota de Débito
   },
   tipo_comprobante: {
-    type: DataTypes.ENUM('Factura', 'Boleta', 'NotaCredito', 'NotaDebito'),
+    type: DataTypes.STRING(20),
     allowNull: false,
     defaultValue: 'Boleta',
   },

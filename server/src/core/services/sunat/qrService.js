@@ -49,4 +49,17 @@ export class QrService {
   }
 }
 
+export async function generarQrBase64(cadenaQR) {
+  try {
+    return await QRCode.toDataURL(cadenaQR, {
+      errorCorrectionLevel: 'M',
+      margin: 1,
+      width: 250,
+    });
+  } catch (error) {
+    console.warn('Error al generar imagen QR Base64:', error.message);
+    return null;
+  }
+}
+
 export default new QrService();

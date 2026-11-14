@@ -1,4 +1,6 @@
 import { SignedXml } from 'xml-crypto';
+import AdmZip from 'adm-zip';
+import certService, { decryptCertPassword } from './certService.js';
 
 /**
  * 🇵🇪 Servicio Oficial de Firma Digital XML XAdES-BES para SUNAT UBL 2.1
@@ -81,3 +83,53 @@ export class SignerService {
 }
 
 export default new SignerService();
+
+/**
+ * Firma digitalmente un XML y lo comprime en formato ZIP estándar SUNAT
+ * @param {string} xmlString Contenido XML sin firmar
+ * @param {string} xmlFileName Nombre del XML dentro del ZIP (ej. 20601234567-09-T001-00000001.xml)
+ * @param {Object} empresa Objeto Empresa con datos de certificado digital
+ * @returns {Promise<Buffer>} Buffer del archivo .zip listo para envío
+ */
+export async function signXmlAndCompressZip(xmlString, xmlFileName, empresa) {
+  const ruc = empresa?.ruc || '20000000001';
+  let password = null;
+  if (empresa?.certificado_password_cifrado) {
+    password = decryptCertPassword(empresa.certificado_password_cifrado);
+  } else if (empresa?.certificado_password) {
+    password = empresa.certificado_password;
+  } else if (empresa?.cert_password) {
+    password = empresa.cert_password;
+  }
+
+  let creds;
+  try {
+    if (empresa?.certificado_pfx && Buffer.isBuffer(empresa.certificado_pfx)) {
+      creds = certService.extraerDePfx(empresa.certificado_pfx, password || '');
+    } else {
+      creds = certService.obtenerCredencialesCertificado(ruc, password);
+    }
+  } catch (err) {
+    if (
+      process.env.NODE_ENV !== 'production' ||
+      (empresa?.modo_sunat || '').toUpperCase() !== 'PRODUCCION'
+    ) {
+      try {
+        certService.generarCertificadoPrueba(ruc, empresa?.razon_social || 'PRUEBAS');
+        creds = certService.obtenerCredencialesCertificado(ruc);
+      } catch (_) {
+        throw err;
+      }
+    } else {
+      throw err;
+    }
+  }
+
+  const signer = new SignerService();
+  const { signedXml } = signer.firmarXml(xmlString, creds.privateKeyPem, creds.certificateBase64);
+
+  const zip = new AdmZip();
+  const entryName = xmlFileName.endsWith('.xml') ? xmlFileName : `${xmlFileName}.xml`;
+  zip.addFile(entryName, Buffer.from(signedXml, 'utf8'));
+  return zip.toBuffer();
+}

@@ -327,4 +327,88 @@ export async function consultarCdrSunat({ rucComprobante, tipoComprobante, serie
   }
 }
 
+export function construirSoapSendSummary(fileNameWithZip, contentBase64, credenciales) {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
+                  xmlns:ser="http://service.sunat.gob.pe"
+                  xmlns:wsse="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd">
+  <soapenv:Header>
+    <wsse:Security>
+      <wsse:UsernameToken>
+        <wsse:Username>${credenciales.ruc}${credenciales.usuarioSol}</wsse:Username>
+        <wsse:Password>${credenciales.claveSol}</wsse:Password>
+      </wsse:UsernameToken>
+    </wsse:Security>
+  </soapenv:Header>
+  <soapenv:Body>
+    <ser:sendSummary>
+      <fileName>${fileNameWithZip}</fileName>
+      <contentFile>${contentBase64}</contentFile>
+    </ser:sendSummary>
+  </soapenv:Body>
+</soapenv:Envelope>`;
+}
+
+export function construirSoapGetStatus(ticketNumero, credenciales) {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
+                  xmlns:ser="http://service.sunat.gob.pe"
+                  xmlns:wsse="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd">
+  <soapenv:Header>
+    <wsse:Security>
+      <wsse:UsernameToken>
+        <wsse:Username>${credenciales.ruc}${credenciales.usuarioSol}</wsse:Username>
+        <wsse:Password>${credenciales.claveSol}</wsse:Password>
+      </wsse:UsernameToken>
+    </wsse:Security>
+  </soapenv:Header>
+  <soapenv:Body>
+    <ser:getStatus>
+      <ticket>${ticketNumero}</ticket>
+    </ser:getStatus>
+  </soapenv:Body>
+</soapenv:Envelope>`;
+}
+
+export async function enviarResumenSoapSunat(zipBase64, fileNameZip, credenciales, endpointUrl) {
+  const targetUrl = endpointUrl || 'https://e-beta.sunat.gob.pe/ol-ti-itcpfegem-beta/billService';
+  const envelope = construirSoapSendSummary(fileNameZip, zipBase64, credenciales);
+  const response = await fetch(targetUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/xml;charset=UTF-8' },
+    body: envelope,
+  });
+
+  const xmlText = await response.text();
+  const ticketMatch = xmlText.match(/<ticket>\s*([0-9]+)\s*<\/ticket>/i);
+
+  if (!ticketMatch?.[1]) {
+    const faultMatch = xmlText.match(/<faultstring>([\s\S]*?)<\/faultstring>/i);
+    throw new Error(faultMatch?.[1] || `SUNAT no devolvió número de ticket: ${xmlText.slice(0, 300)}`);
+  }
+
+  return { ticket: ticketMatch[1].trim() };
+}
+
+export async function consultarTicketSoapSunat(ticketNumero, credenciales, endpointUrl) {
+  const targetUrl = endpointUrl || 'https://e-beta.sunat.gob.pe/ol-ti-itcpfegem-beta/billService';
+  const envelope = construirSoapGetStatus(ticketNumero, credenciales);
+  const response = await fetch(targetUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/xml;charset=UTF-8' },
+    body: envelope,
+  });
+
+  const xmlText = await response.text();
+  const statusCodeMatch = xmlText.match(/<statusCode>\s*([0-9]+)\s*<\/statusCode>/i);
+  const contentMatch = xmlText.match(/<content>([\s\S]*?)<\/content>/i);
+
+  const statusCode = statusCodeMatch?.[1]?.trim() || '99';
+  return {
+    statusCode, // '0' = Aceptado | '98' = En Proceso | '99' = Rechazado/Error
+    cdrBase64: contentMatch?.[1]?.trim() || null,
+    rawXml: xmlText,
+  };
+}
+
 export default new SoapService();

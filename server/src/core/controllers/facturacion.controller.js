@@ -1,7 +1,7 @@
 import fs from 'fs';
 import fsPromises from 'node:fs/promises';
 import path from 'path';
-import { Op } from 'sequelize';
+import { Op, Transaction } from 'sequelize';
 import sequelize from '../../config/db.js';
 import { ComprobanteElectronico, Usuario, Sucursal, Empresa } from '../models/index.js';
 import {
@@ -10,8 +10,23 @@ import {
 } from '../services/sunatUbl.service.js';
 import pdfService from '../services/sunat/pdfService.js';
 import { registrarAuditoria } from '../middleware/auditoria.middleware.js';
-import { resolveSafeTenantPath } from '../services/sunat/certService.js';
+import { resolveSafeTenantPath, decryptCertPassword } from '../services/sunat/certService.js';
 import { ejecutarCicloContingenciaSunat } from '../services/sunat/contingencyWorker.js';
+import {
+  construirXmlGreUBL21,
+  enviarGreApiRest,
+  consultarTicketGreApiRest,
+} from '../services/sunat/greService.js';
+import {
+  construirXmlResumenDiarioRC,
+  construirXmlComunicacionBajaRA,
+} from '../services/sunat/resumenBajaService.js';
+import {
+  enviarResumenSoapSunat,
+  consultarTicketSoapSunat,
+} from '../services/sunat/soapService.js';
+import { consultarValidezComprobanteSunat } from '../services/sunat/validezCpeService.js';
+import { signXmlAndCompressZip } from '../services/sunat/signerService.js';
 
 const STORAGE_ROOT = path.resolve(process.cwd(), 'storage');
 
@@ -533,6 +548,236 @@ export async function obtenerArchivoComprobante(req, res, next) {
   }
 }
 
+/**
+ * 1. POST /api/facturacion/gre/emitir
+ * Emite GRE Remitente ('09') o Transportista ('31') por API REST y devuelve el ticket + estado
+ */
+export const emitirGuiaRemision = async (req, res, next) => {
+  try {
+    const tipo_comprobante = req.body.tipo_comprobante === '31' ? '31' : '09';
+    const serie = req.body.serie || (tipo_comprobante === '31' ? 'V001' : 'T001');
+
+    const { empresa, cpeGre, nombreBaseCpe, zipBuffer } = await sequelize.transaction(
+      { isolationLevel: Transaction.ISOLATION_LEVELS.READ_COMMITTED },
+      async (t) => {
+        const emp = await Empresa.findOne({
+          where: { id: req.empresa_id },
+          lock: t.LOCK.UPDATE,
+          transaction: t,
+        });
+
+        if (!emp) {
+          throw new Error(`Empresa ID ${req.empresa_id} no encontrada.`);
+        }
+
+        const ultimo = await ComprobanteElectronico.findOne({
+          where: { empresa_id: req.empresa_id, tipo_comprobante, serie },
+          order: [['correlativo', 'DESC']],
+          lock: t.LOCK.UPDATE,
+          transaction: t,
+        });
+
+        const correlativo = (ultimo ? Number(ultimo.correlativo) : 0) + 1;
+        const baseName = `${emp.ruc}-${tipo_comprobante}-${serie}-${String(correlativo).padStart(8, '0')}`;
+        const numeroFormato = `${serie}-${String(correlativo).padStart(8, '0')}`;
+
+        const xmlSinFirma = construirXmlGreUBL21({ ...req.body, tipo_comprobante, serie, correlativo }, emp);
+        const zipBuf = await signXmlAndCompressZip(xmlSinFirma, `${baseName}.xml`, emp);
+
+        const zipSafePath = resolveSafeTenantPath(STORAGE_ROOT, req.empresa_id, `${baseName}.zip`);
+        await fsPromises.mkdir(path.dirname(zipSafePath), { recursive: true });
+        await fsPromises.writeFile(zipSafePath, zipBuf);
+
+        const nuevoCpe = await ComprobanteElectronico.create(
+          {
+            empresa_id: req.empresa_id,
+            sucursal_id: req.user?.sucursal_id || null,
+            tipo_documento_codigo: tipo_comprobante,
+            tipo_comprobante,
+            serie,
+            correlativo,
+            numero_formato: numeroFormato,
+            fecha_emision: new Date(),
+            cliente_tipo_documento: req.body.destinatario?.tipo_documento || '6',
+            cliente_documento: req.body.destinatario?.documento || '',
+            cliente_nombre: req.body.destinatario?.razon_social || '',
+            total: 0,
+            estado_sunat: 'PROCESANDO_ENVIO',
+            xml_firmado_filename: `${baseName}.zip`,
+          },
+          { transaction: t }
+        );
+
+        return { empresa: emp, cpeGre: nuevoCpe, nombreBaseCpe: baseName, zipBuffer: zipBuf };
+      }
+    );
+
+    // Envío al API REST de GRE SUNAT
+    const ticketData = await enviarGreApiRest(empresa, nombreBaseCpe, zipBuffer);
+    const estadoTicket = await consultarTicketGreApiRest(
+      empresa,
+      ticketData.numTicket,
+      nombreBaseCpe
+    );
+
+    await cpeGre.update({
+      estado_sunat: estadoTicket.estado_sunat,
+      codigo_sunat: estadoTicket.codigo_sunat || '98',
+      cdr_filename: estadoTicket.cdr_filename || null,
+      ultimo_error_sunat: `Ticket GRE: ${ticketData.numTicket} | ${estadoTicket.mensaje}`,
+    });
+
+    return res.status(201).json({
+      ok: true,
+      data: {
+        id: cpeGre.id,
+        comprobante: `${cpeGre.serie}-${String(cpeGre.correlativo).padStart(8, '0')}`,
+        numTicket: ticketData.numTicket,
+        ...estadoTicket,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * 2. POST /api/facturacion/anulacion-masiva
+ * Genera y envía automáticamente un Resumen Diario (RC con ConditionCode=3 para Boletas)
+ * o una Comunicación de Baja (RA para Facturas) según el tipo de los comprobantes seleccionados.
+ */
+export const emitirAnulacionMasivaRcRa = async (req, res, next) => {
+  try {
+    const { comprobante_ids = [], motivo_baja = 'ANULACION DE LA OPERACION' } = req.body;
+
+    if (!Array.isArray(comprobante_ids) || comprobante_ids.length === 0) {
+      return res.status(422).json({
+        ok: false,
+        message: 'Debe enviar al menos un ID en comprobante_ids para anular.',
+      });
+    }
+
+    const empresa = await Empresa.findOne({ where: { id: req.empresa_id } });
+    if (!empresa) {
+      return res.status(404).json({ ok: false, message: 'Empresa no encontrada.' });
+    }
+
+    const comprobantes = await ComprobanteElectronico.findAll({
+      where: {
+        id: { [Op.in]: comprobante_ids },
+        empresa_id: req.empresa_id,
+      },
+    });
+
+    if (comprobantes.length === 0) {
+      return res.status(404).json({ ok: false, message: 'No se encontraron comprobantes válidos.' });
+    }
+
+    const fechaHoyCompacta = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const fechaReferencia = new Date(comprobantes[0].fecha_emision).toISOString().slice(0, 10);
+
+    // Separar Facturas ('01' -> RA) de Boletas ('03' -> RC con ConditionCode = 3)
+    const esLoteFacturas = comprobantes.every((c) => c.tipo_comprobante === '01' || c.tipo_documento_codigo === '01' || c.tipo_comprobante === 'Factura');
+    const prefijo = esLoteFacturas ? 'RA' : 'RC';
+    const correlativoLote = String(Math.floor(Date.now() / 1000) % 99999).padStart(5, '0');
+    const identificadorLote = `${prefijo}-${fechaHoyCompacta}-${correlativoLote}`;
+    const nombreBaseArchivo = `${empresa.ruc}-${identificadorLote}`;
+
+    const xmlLote = esLoteFacturas
+      ? construirXmlComunicacionBajaRA({
+          empresa,
+          identificadorLote,
+          fechaReferencia,
+          comprobantes: comprobantes.map((c) => ({
+            ...c.toJSON(),
+            motivo_baja,
+          })),
+        })
+      : construirXmlResumenDiarioRC({
+          empresa,
+          identificadorLote,
+          fechaReferencia,
+          comprobantes: comprobantes.map((c) => c.toJSON()),
+          conditionCode: 3, // 3 = Anulación de Boleta
+        });
+
+    const zipBuffer = await signXmlAndCompressZip(xmlLote, `${nombreBaseArchivo}.xml`, empresa);
+    const zipSafePath = resolveSafeTenantPath(
+      STORAGE_ROOT,
+      req.empresa_id,
+      `${nombreBaseArchivo}.zip`
+    );
+    await fsPromises.mkdir(path.dirname(zipSafePath), { recursive: true });
+    await fsPromises.writeFile(zipSafePath, zipBuffer);
+
+    const credencialesSol = {
+      ruc: empresa.ruc,
+      usuarioSol: empresa.usuario_sol || empresa.sunat_usuario_sol,
+      claveSol: empresa.clave_sol_cifrada
+        ? decryptCertPassword(empresa.clave_sol_cifrada)
+        : (empresa.clave_sol || empresa.sunat_clave_sol),
+    };
+
+    const endpointUrl =
+      empresa.modo_sunat === 'PRODUCCION'
+        ? process.env.SUNAT_ENDPOINT_PROD
+        : process.env.SUNAT_ENDPOINT_BETA;
+
+    const { ticket } = await enviarResumenSoapSunat(
+      zipBuffer.toString('base64'),
+      `${nombreBaseArchivo}.zip`,
+      credencialesSol,
+      endpointUrl
+    );
+
+    const statusTicket = await consultarTicketSoapSunat(ticket, credencialesSol, endpointUrl);
+
+    if (statusTicket.statusCode === '0') {
+      await ComprobanteElectronico.update(
+        {
+          estado_sunat: 'ANULADO_SUNAT',
+          ultimo_error_sunat: `Anulado vía ${identificadorLote} (Ticket: ${ticket})`,
+        },
+        { where: { id: comprobantes.map((c) => c.id), empresa_id: req.empresa_id } }
+      );
+    }
+
+    return res.status(200).json({
+      ok: true,
+      data: {
+        tipo_proceso: prefijo,
+        identificador_lote: identificadorLote,
+        ticket_sunat: ticket,
+        status_code: statusTicket.statusCode,
+        total_comprobantes_procesados: comprobantes.length,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * 3. POST /api/facturacion/validar-cpe
+ * Consulta en tiempo real en SUNAT si un comprobante propio o de proveedor es VÁLIDO, ANULADO o NO EXISTE
+ */
+export const validarComprobanteTiempoReal = async (req, res, next) => {
+  try {
+    const empresa = await Empresa.findOne({ where: { id: req.empresa_id } });
+    if (!empresa) {
+      return res.status(404).json({ ok: false, message: 'Empresa no encontrada.' });
+    }
+    const resultado = await consultarValidezComprobanteSunat(empresa, req.body);
+
+    return res.status(200).json({
+      ok: true,
+      data: resultado,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export default {
   listarComprobantes,
   emitirComprobante,
@@ -544,4 +789,7 @@ export default {
   obtenerSiguienteCorrelativo,
   forzarReintentoSunat,
   obtenerArchivoComprobante,
+  emitirGuiaRemision,
+  emitirAnulacionMasivaRcRa,
+  validarComprobanteTiempoReal,
 };

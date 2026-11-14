@@ -11,6 +11,9 @@ import {
   descargarPdfComprobante,
   forzarReintentoSunat,
   obtenerArchivoComprobante,
+  emitirGuiaRemision,
+  emitirAnulacionMasivaRcRa,
+  validarComprobanteTiempoReal,
 } from '../controllers/facturacion.controller.js';
 import {
   obtenerResumenContableMes,
@@ -34,6 +37,15 @@ router.get('/comprobantes/:id/cdr', descargarCdrComprobante);
 router.get('/comprobantes/:id/pdf', descargarPdfComprobante);
 router.post('/comprobantes/:id/reintentar', forzarReintentoSunat);
 router.get('/comprobantes/:id/archivo/:tipo', obtenerArchivoComprobante);
+
+// Guías de Remisión Electrónica (GRE Remitente '09' y Transportista '31') vía API REST SUNAT
+router.post('/gre/emitir', emitirGuiaRemision);
+
+// Resumen Diario de Boletas (RC) y Comunicación de Bajas (RA) para anulaciones masivas
+router.post('/anulacion-masiva', emitirAnulacionMasivaRcRa);
+
+// Consulta de Validez de Comprobantes en Tiempo Real contra API SUNAT
+router.post('/validar-cpe', validarComprobanteTiempoReal);
 
 // Libros Contables y Exportaciones Tributarias SUNAT (14.1, 13.1, PLE y Arqueos)
 router.get('/reportes/resumen-mes', obtenerResumenContableMes);
