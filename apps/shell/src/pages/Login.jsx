@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useAuthStore, api } from '@heis/core';
+import { useAuthStore, api, getRoleLandingRoute } from '@heis/core';
 import toast from 'react-hot-toast';
 import {
   Lock,
@@ -273,11 +273,17 @@ export default function Login() {
       const res = await login(email, password);
       toast.success('¡Bienvenido a HEIS Suite!');
       const loggedUser = res?.data?.user || useAuthStore.getState().user;
-      if (loggedUser?.rol === 'superadmin' || loggedUser?.role === 'superadmin') {
-        navigate('/superadmin');
-      } else {
-        navigate('/dashboard');
+      const empresaData = res?.data?.empresa || useAuthStore.getState().empresa;
+      let modulosActivos = [];
+      if (empresaData?.modulos_activos) {
+        if (typeof empresaData.modulos_activos === 'string') {
+          try { modulosActivos = JSON.parse(empresaData.modulos_activos); } catch { modulosActivos = ['restaurante']; }
+        } else if (Array.isArray(empresaData.modulos_activos)) {
+          modulosActivos = empresaData.modulos_activos;
+        }
       }
+      const targetRoute = getRoleLandingRoute(loggedUser, modulosActivos);
+      navigate(targetRoute);
     } catch (err) {
       const errorMsg =
         err.response?.data?.error ||

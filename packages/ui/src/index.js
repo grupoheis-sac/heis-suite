@@ -10,3 +10,12 @@ export { default as UnifiedToastItem } from './components/UnifiedToast';
 export { default as TicketImpresion } from './components/TicketImpresion';
 export { default as SubscriptionStatusBanner } from './components/SubscriptionStatusBanner';
 export { useSlidingPill } from './hooks/useSlidingPill';
+export {
+  isSuperAdminUser,
+  isGeneralAdminUser,
+  getUserVertical,
+  getUserAllowedModules,
+  canUserAccessModule,
+  getUserPermissions,
+  getRoleLandingRoute,
+} from './utils/rbac';

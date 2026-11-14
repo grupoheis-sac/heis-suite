@@ -704,7 +704,11 @@ export default function Layout({
         </main>
 
         {/* Navegación Inferior Móvil Flotante */}
-        <MobileBottomNav onOpenMenu={() => setMobileOpen(true)} />
+        <MobileBottomNav
+          onOpenMenu={() => setMobileOpen(true)}
+          user={user}
+          modulosActivos={modulosActivos}
+        />
       </div>
 
       {/* Modal para Registrar Soporte Técnico & Telemetría en Vivo */}

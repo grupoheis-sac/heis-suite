@@ -50,12 +50,31 @@ import {
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../store/authStore';
 
-// Opciones de roles con descripciones operativas de ferretería
+// Opciones de roles con descripciones operativas por vertical de negocio
 const OPCIONES_ROLES = [
-  { valor: 'Administrador', etiqueta: 'Administrador / Gerente', descripcion: 'Control total del sistema, reportes ejecutivos, configuración y finanzas' },
-  { valor: 'Cajero', etiqueta: 'Cajero / POS', descripcion: 'Apertura y arqueo de turnos de caja, cobro de comandas y comprobantes' },
-  { valor: 'Mozo', etiqueta: 'Mozo / Atención en Salón', descripcion: 'Atención en mesas, toma de pedidos, comandas y gestión de salón' },
-  { valor: 'Cocina', etiqueta: 'Chef / Cocina KDS', descripcion: 'Pantalla de cocina, preparación de platos, recetas y despacho' }
+  // Corporativo
+  { valor: 'Administrador', etiqueta: '👑 Administrador / Gerente General', descripcion: 'Control total del sistema, reportes ejecutivos, configuración y finanzas' },
+
+  // Restaurante
+  { valor: 'Admin Restaurante', etiqueta: '🍽️ Admin Restaurante', descripcion: 'Gestión de mesas, cartas, reservas, KDS y comandas de restaurante' },
+  { valor: 'Mozo', etiqueta: '🍽️ Mozo / Mesero', descripcion: 'Atención en mesas, toma de pedidos, comandas y gestión de salón' },
+  { valor: 'Cocinero / Chef', etiqueta: '🍽️ Cocinero / Chef (Cocina KDS)', descripcion: 'Pantalla de cocina KDS, preparación de platos y despacho' },
+  { valor: 'Bartender', etiqueta: '🍽️ Bartender / Bar KDS', descripcion: 'Despacho de bebidas y coctelería en KDS' },
+
+  // Ferretería & Retail
+  { valor: 'Admin Ferretería', etiqueta: '🔨 Admin Ferretería Retail', descripcion: 'Gestión comercial retail, cotizaciones, compras y almacén' },
+  { valor: 'Cajero', etiqueta: '🔨 Cajero / Cobros POS', descripcion: 'Apertura y arqueo de turnos de caja, cobro en POS y comprobantes' },
+  { valor: 'Vendedor', etiqueta: '🔨 Vendedor / Asesor Comercial', descripcion: 'Cotizaciones, atención a clientes y ventas de mostrador' },
+  { valor: 'Almacenero', etiqueta: '🔨 Almacenero / Kardex', descripcion: 'Entradas, salidas de almacén, inventario físico y compras' },
+
+  // Botica & Farmacia
+  { valor: 'Admin Botica', etiqueta: '💊 Admin Botica / Regente', descripcion: 'Dirección técnica farmacéutica, DIGEMID y stock' },
+  { valor: 'Farmacéutico', etiqueta: '💊 Farmacéutico Dispensador', descripcion: 'Dispensación mostrador, recetas, lotes y vencimientos FEFO' },
+
+  // Hospedaje & Hotel
+  { valor: 'Admin Hospedaje', etiqueta: '🏨 Admin Hotel / PMS', descripcion: 'Administración de habitaciones, tarifas, huéspedes y reservas' },
+  { valor: 'Recepcionista Hotel', etiqueta: '🏨 Recepcionista Hotel', descripcion: 'Rack de habitaciones, Check-In, Check-Out y Room Service' },
+  { valor: 'Limpieza Hotel', etiqueta: '🏨 Limpieza / Housekeeping', descripcion: 'Estado de habitaciones (limpia, sucia, mantenimiento)' },
 ];
 
 // Componente de Píldora Desplegable con diseño idéntico al modal de Clientes, Proveedores y Usuarios (Tipo Documento *)

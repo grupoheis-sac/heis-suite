@@ -5,16 +5,70 @@ import {
   ChefHat,
   Receipt,
   CalendarCheck,
-  Menu
+  Menu,
+  ShoppingBag,
+  Pill,
+  Hotel,
+  LayoutDashboard,
+  Wallet,
+  Boxes,
+  Sparkles,
 } from 'lucide-react';
+import { getUserVertical, getUserPermissions, isGeneralAdminUser } from '../utils/rbac';
 
-export default function MobileBottomNav({ onOpenMenu }) {
-  const navItems = [
-    { to: '/mesas', label: 'Mesas', icon: UtensilsCrossed, isPrimary: true },
-    { to: '/cocina', label: 'Cocina', icon: ChefHat },
-    { to: '/ordenes', label: 'Comandas', icon: Receipt },
-    { to: '/reservas', label: 'Reservas', icon: CalendarCheck }
-  ];
+export default function MobileBottomNav({ onOpenMenu, user = null, modulosActivos = ['restaurante'] }) {
+  const vertical = getUserVertical(user);
+  const perms = getUserPermissions(user);
+  const isGenAdmin = isGeneralAdminUser(user);
+
+  let navItems = [];
+
+  if (isGenAdmin) {
+    navItems = [
+      { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, isPrimary: true },
+      modulosActivos.includes('restaurante') && { to: '/mesas', label: 'Mesas', icon: UtensilsCrossed },
+      modulosActivos.includes('ferreteria') && { to: '/pos', label: 'POS Retail', icon: ShoppingBag },
+      modulosActivos.includes('botica') && { to: '/dispensacion', label: 'Farmacia', icon: Pill },
+      modulosActivos.includes('hospedaje') && { to: '/habitaciones', label: 'Hotel', icon: Hotel },
+    ].filter(Boolean);
+  } else if (vertical === 'restaurante') {
+    if (perms.canViewCocina && !perms.canViewMesas) {
+      navItems = [{ to: '/cocina', label: 'Cocina KDS', icon: ChefHat, isPrimary: true }];
+    } else {
+      navItems = [
+        { to: '/mesas', label: 'Mesas', icon: UtensilsCrossed, isPrimary: true },
+        perms.canViewCocina && { to: '/cocina', label: 'Cocina', icon: ChefHat },
+        perms.canViewOrdenes && { to: '/ordenes', label: 'Comandas', icon: Receipt },
+        perms.canViewReservas && { to: '/reservas', label: 'Reservas', icon: CalendarCheck },
+      ].filter(Boolean);
+    }
+  } else if (vertical === 'ferreteria') {
+    navItems = [
+      perms.canViewPOS && { to: '/pos', label: 'POS Retail', icon: ShoppingBag, isPrimary: true },
+      perms.canViewVentas && { to: '/ventas', label: 'Ventas', icon: Receipt },
+      perms.canViewInventario && { to: '/inventario', label: 'Inventario', icon: Boxes },
+      perms.canViewCaja && { to: '/caja', label: 'Caja', icon: Wallet },
+    ].filter(Boolean);
+  } else if (vertical === 'botica') {
+    navItems = [
+      perms.canViewDispensacion && { to: '/dispensacion', label: 'Dispensación', icon: Pill, isPrimary: true },
+      perms.canViewMedicamentos && { to: '/medicamentos', label: 'Medicamentos', icon: Boxes },
+      perms.canViewLotes && { to: '/lotes', label: 'Lotes FEFO', icon: CalendarCheck },
+      perms.canViewCaja && { to: '/caja', label: 'Caja', icon: Wallet },
+    ].filter(Boolean);
+  } else if (vertical === 'hospedaje') {
+    navItems = [
+      perms.canViewRack && { to: '/habitaciones', label: 'Rack Hotel', icon: Hotel, isPrimary: true },
+      perms.canViewReservasHotel && { to: '/reservas-hotel', label: 'Reservas', icon: CalendarCheck },
+      perms.canViewLimpieza && { to: '/limpieza-hotel', label: 'Limpieza', icon: Sparkles },
+      perms.canViewCaja && { to: '/caja-hotel', label: 'Caja Hotel', icon: Wallet },
+    ].filter(Boolean);
+  } else {
+    navItems = [
+      { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, isPrimary: true },
+      { to: '/caja', label: 'Caja', icon: Wallet },
+    ];
+  }
 
   return (
     <nav className="lg:hidden fixed bottom-3 inset-x-3 max-w-md mx-auto z-40 bg-white/90 dark:bg-[#110C2B]/90 backdrop-blur-xl border border-slate-200/80 dark:border-white/10 rounded-full px-3 py-1.5 shadow-2xl shadow-slate-900/10 dark:shadow-black/50 select-none">

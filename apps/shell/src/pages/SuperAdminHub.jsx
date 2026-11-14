@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { api, useAuthStore, consultarDocumento } from '@heis/core';
+import { api, useAuthStore, consultarDocumento, getUserVertical } from '@heis/core';
 import toast from 'react-hot-toast';
 import {
   ShieldAlert,
@@ -11791,25 +11791,39 @@ Equipo HEIS Suite`;
                   {(!empresaDetalles.usuarios || empresaDetalles.usuarios.length === 0) ? (
                     <p className="text-xs text-slate-400 italic">No hay usuarios registrados</p>
                   ) : (
-                    empresaDetalles.usuarios.map((u) => (
-                      <div key={u.id} className="p-3 rounded-xl bg-slate-50 dark:bg-white/5 flex items-center justify-between text-xs border border-slate-200/60 dark:border-white/5">
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-7 h-7 rounded-full bg-slate-200 dark:bg-white/10 flex items-center justify-center font-bold text-xs text-slate-700 dark:text-white">
-                            {u.nombre ? u.nombre.charAt(0).toUpperCase() : 'U'}
+                    empresaDetalles.usuarios.map((u) => {
+                      const userVert = getUserVertical(u);
+                      const vertMeta = {
+                        restaurante: { label: '🍽️ Restaurante', cls: 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30' },
+                        ferreteria: { label: '🔨 Ferretería', cls: 'bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30' },
+                        botica: { label: '💊 Botica', cls: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30' },
+                        hospedaje: { label: '🏨 Hospedaje', cls: 'bg-violet-500/15 text-violet-600 dark:text-violet-400 border border-violet-500/30' },
+                        general: { label: '👑 Corporativo', cls: 'bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/30' },
+                      }[userVert] || { label: 'Suite', cls: 'bg-slate-100 dark:bg-white/10 text-slate-500' };
+
+                      return (
+                        <div key={u.id} className="p-3 rounded-xl bg-slate-50 dark:bg-white/5 flex items-center justify-between text-xs border border-slate-200/60 dark:border-white/5">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-7 h-7 rounded-full bg-slate-200 dark:bg-white/10 flex items-center justify-center font-bold text-xs text-slate-700 dark:text-white">
+                              {u.nombre ? u.nombre.charAt(0).toUpperCase() : 'U'}
+                            </div>
+                            <div>
+                              <p className="font-bold text-slate-800 dark:text-white">{u.nombre}</p>
+                              <p className="text-[10px] text-slate-400 font-mono">{u.email}</p>
+                            </div>
                           </div>
-                          <div>
-                            <p className="font-bold text-slate-800 dark:text-white">{u.nombre}</p>
-                            <p className="text-[10px] text-slate-400 font-mono">{u.email}</p>
+                          <div className="flex items-center gap-2 flex-wrap justify-end">
+                            <span className={`px-2 py-0.5 rounded-full text-[9.5px] font-bold ${vertMeta.cls}`}>
+                              {vertMeta.label}
+                            </span>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#7D71EB]/10 text-[#7D71EB] dark:text-[#1CC0F9]">
+                              {u.rol}
+                            </span>
+                            <span className={`w-2 h-2 rounded-full ${u.activo ? 'bg-emerald-500' : 'bg-slate-300'}`} />
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#7D71EB]/10 text-[#7D71EB] dark:text-[#1CC0F9]">
-                            {u.rol}
-                          </span>
-                          <span className={`w-2 h-2 rounded-full ${u.activo ? 'bg-emerald-500' : 'bg-slate-300'}`} />
-                        </div>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
               </div>

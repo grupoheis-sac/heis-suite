@@ -35,6 +35,14 @@ import {
   Lock,
   HelpCircle
 } from 'lucide-react';
+import {
+  isSuperAdminUser,
+  isGeneralAdminUser,
+  getUserVertical,
+  getUserAllowedModules,
+  canUserAccessModule,
+  getUserPermissions,
+} from '../utils/rbac';
 
 export default function Sidebar({
   mobileOpen = false,
@@ -74,16 +82,23 @@ export default function Sidebar({
     if (typeof onCloseMobile === 'function') onCloseMobile();
   }, [setMobileOpen, onCloseMobile]);
 
-  const esAdmin =
-    user?.role === 'admin' ||
-    user?.rol === 'admin' ||
-    user?.rol === 'Administrador' ||
-    user?.rol === 'Gerente' ||
-    user?.rol === 'superadmin' ||
-    !user?.role;
-
-  const isSuperAdmin = user?.rol === 'superadmin' || user?.role === 'superadmin';
+  const isSuperAdmin = isSuperAdminUser(user);
+  const isGeneralAdmin = isGeneralAdminUser(user);
   const isSuperAdminPlataforma = isSuperAdmin && !empresa;
+  const userPerms = getUserPermissions(user);
+  const userVertical = getUserVertical(user);
+  const allowedModules = getUserAllowedModules(user, modulosActivos);
+
+  const hasRestaurante = allowedModules.includes('restaurante');
+  const hasFerreteria = allowedModules.includes('ferreteria');
+  const hasBotica = allowedModules.includes('botica');
+  const hasHospedaje = allowedModules.includes('hospedaje');
+  const hasCoreSuite =
+    userPerms.canViewCaja ||
+    userPerms.canViewFacturacionSunat ||
+    userPerms.canViewAdministracion ||
+    userPerms.canViewConfiguracion;
+  const esAdmin = isGeneralAdmin;
 
   // Rutas activas
   const isDashboardActive = location.pathname === '/dashboard' || location.pathname === '/';
@@ -172,11 +187,6 @@ export default function Sidebar({
   useEffect(() => {
     if (isOperacionesActive) setOpenOperaciones(true);
   }, [isOperacionesActive]);
-
-  const hasRestaurante = modulosActivos.includes('restaurante');
-  const hasFerreteria = modulosActivos.includes('ferreteria');
-  const hasBotica = modulosActivos.includes('botica');
-  const hasHospedaje = modulosActivos.includes('hospedaje');
 
   const submodulosMap = typeof empresa?.submodulos_activos === 'string'
     ? (() => { try { return JSON.parse(empresa.submodulos_activos || '{}'); } catch { return {}; } })()
@@ -373,17 +383,19 @@ export default function Sidebar({
           </div>
         )}
 
-        {/* DASHBOARD PRINCIPAL */}
-        <div data-expanded-nav="dashboard" className="relative">
-          <NavLink
-            to="/dashboard"
-            onClick={onItemClick}
-            className={getMainItemClass(isDashboardActive)}
-          >
-            {renderIconBadge(LayoutDashboard, 'text-sky-500 dark:text-sky-400', 'text-slate-400 dark:text-slate-500', isDashboardActive)}
-            <span className="flex-1 font-semibold">Dashboard</span>
-          </NavLink>
-        </div>
+        {/* DASHBOARD PRINCIPAL (Solo roles autorizados) */}
+        {userPerms.canViewDashboard && (
+          <div data-expanded-nav="dashboard" className="relative">
+            <NavLink
+              to="/dashboard"
+              onClick={onItemClick}
+              className={getMainItemClass(isDashboardActive)}
+            >
+              {renderIconBadge(LayoutDashboard, 'text-sky-500 dark:text-sky-400', 'text-slate-400 dark:text-slate-500', isDashboardActive)}
+              <span className="flex-1 font-semibold">Dashboard</span>
+            </NavLink>
+          </div>
+        )}
 
         {/* SECCIÓN RESTAURANTE */}
         {hasRestaurante && (
@@ -396,78 +408,125 @@ export default function Sidebar({
               <span className="px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-500 text-[9px] font-black border border-amber-500/20">POS</span>
             </div>
 
-            {/* ACORDEÓN OPERACIONES */}
-            <div data-expanded-nav="operaciones" className="relative flex flex-col">
-              <button
-                onClick={() => setOpenOperaciones(!openOperaciones)}
-                className={getMainItemClass(isOperacionesActive)}
-              >
-                {renderIconBadge(UtensilsCrossed, 'text-amber-500 dark:text-amber-400', 'text-slate-400 dark:text-slate-500', isOperacionesActive)}
-                <span className="flex-1 text-left font-semibold">Salón & Pedidos</span>
-                <ChevronDown
-                  className={`w-3.5 h-3.5 transition-transform duration-200 ${openOperaciones ? 'rotate-180 text-amber-500' : 'text-slate-400'
-                    }`}
-                />
-              </button>
+            {/* Cocinero / Chef exclusivo */}
+            {userPerms.canViewCocina && !userPerms.canViewMesas && (
+              <div data-expanded-nav="cocina" className="relative">
+                <NavLink
+                  to="/cocina"
+                  onClick={onItemClick}
+                  className={getMainItemClass(location.pathname === '/cocina')}
+                >
+                  {renderIconBadge(ChefHat, 'text-rose-500 dark:text-rose-400', 'text-slate-400 dark:text-slate-500', location.pathname === '/cocina')}
+                  <span className="flex-1 font-semibold">Cocina KDS</span>
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                </NavLink>
+              </div>
+            )}
 
-              {openOperaciones && (
-                <div className="pl-4 pr-1 py-1 flex flex-col gap-1 border-l-2 border-amber-500/20 ml-6 my-1">
+            {/* Mozo exclusivo */}
+            {userPerms.canViewMesas && !userPerms.canViewCocina && (
+              <>
+                <div data-expanded-nav="mesas" className="relative">
                   <NavLink
                     to="/mesas"
                     onClick={onItemClick}
-                    className={({ isActive }) =>
-                      `px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors flex items-center gap-2 ${isActive
-                        ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300 font-bold border border-amber-500/20 shadow-2xs'
-                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100/50 dark:hover:bg-white/[0.03]'
-                      }`
-                    }
+                    className={getMainItemClass(location.pathname === '/mesas')}
                   >
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
-                    <span>Mesas y Salón (F1)</span>
+                    {renderIconBadge(UtensilsCrossed, 'text-amber-500 dark:text-amber-400', 'text-slate-400 dark:text-slate-500', location.pathname === '/mesas')}
+                    <span className="flex-1 font-semibold">Salón y Mesas (F1)</span>
                   </NavLink>
-                  {canShowSub('cocina') && (
+                </div>
+                {userPerms.canViewOrdenes && (
+                  <div data-expanded-nav="ordenes" className="relative">
                     <NavLink
-                      to="/cocina"
+                      to="/ordenes"
+                      onClick={onItemClick}
+                      className={getMainItemClass(location.pathname === '/ordenes')}
+                    >
+                      {renderIconBadge(Receipt, 'text-amber-500 dark:text-amber-400', 'text-slate-400 dark:text-slate-500', location.pathname === '/ordenes')}
+                      <span className="flex-1 font-semibold">Historial Comandas</span>
+                    </NavLink>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Admin Restaurante o General: Acordeón completo */}
+            {userPerms.canViewMesas && userPerms.canViewCocina && (
+              <div data-expanded-nav="operaciones" className="relative flex flex-col">
+                <button
+                  onClick={() => setOpenOperaciones(!openOperaciones)}
+                  className={getMainItemClass(isOperacionesActive)}
+                >
+                  {renderIconBadge(UtensilsCrossed, 'text-amber-500 dark:text-amber-400', 'text-slate-400 dark:text-slate-500', isOperacionesActive)}
+                  <span className="flex-1 text-left font-semibold">Salón & Pedidos</span>
+                  <ChevronDown
+                    className={`w-3.5 h-3.5 transition-transform duration-200 ${openOperaciones ? 'rotate-180 text-amber-500' : 'text-slate-400'
+                      }`}
+                  />
+                </button>
+
+                {openOperaciones && (
+                  <div className="pl-4 pr-1 py-1 flex flex-col gap-1 border-l-2 border-amber-500/20 ml-6 my-1">
+                    <NavLink
+                      to="/mesas"
                       onClick={onItemClick}
                       className={({ isActive }) =>
-                        `px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors flex items-center justify-between ${isActive
+                        `px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors flex items-center gap-2 ${isActive
                           ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300 font-bold border border-amber-500/20 shadow-2xs'
                           : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100/50 dark:hover:bg-white/[0.03]'
                         }`
                       }
                     >
-                      <div className="flex items-center gap-2">
-                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
-                        <span>Cocina (KDS)</span>
-                      </div>
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+                      <span>Mesas y Salón (F1)</span>
                     </NavLink>
-                  )}
-                  <NavLink
-                    to="/ordenes"
-                    onClick={onItemClick}
-                    className={({ isActive }) =>
-                      `px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors flex items-center gap-2 ${isActive
-                        ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300 font-bold border border-amber-500/20 shadow-2xs'
-                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100/50 dark:hover:bg-white/[0.03]'
-                      }`
-                    }
-                  >
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
-                    <span>Historial Comandas</span>
-                  </NavLink>
-                </div>
-              )}
-            </div>
+                    {canShowSub('cocina') && (
+                      <NavLink
+                        to="/cocina"
+                        onClick={onItemClick}
+                        className={({ isActive }) =>
+                          `px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors flex items-center justify-between ${isActive
+                            ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300 font-bold border border-amber-500/20 shadow-2xs'
+                            : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100/50 dark:hover:bg-white/[0.03]'
+                          }`
+                        }
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+                          <span>Cocina (KDS)</span>
+                        </div>
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      </NavLink>
+                    )}
+                    <NavLink
+                      to="/ordenes"
+                      onClick={onItemClick}
+                      className={({ isActive }) =>
+                        `px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors flex items-center gap-2 ${isActive
+                          ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300 font-bold border border-amber-500/20 shadow-2xs'
+                          : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100/50 dark:hover:bg-white/[0.03]'
+                        }`
+                      }
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+                      <span>Historial Comandas</span>
+                    </NavLink>
+                  </div>
+                )}
+              </div>
+            )}
 
-            <div data-expanded-nav="menu" className="relative">
-              <NavLink to="/menu" onClick={onItemClick} className={getMainItemClass(isMenuActive)}>
-                {renderIconBadge(BookOpen, 'text-amber-500 dark:text-amber-400', 'text-slate-400 dark:text-slate-500', isMenuActive)}
-                <span className="flex-1 font-semibold">Carta & Menú</span>
-              </NavLink>
-            </div>
+            {userPerms.canViewMenu && canShowSub('menu') && (
+              <div data-expanded-nav="menu" className="relative">
+                <NavLink to="/menu" onClick={onItemClick} className={getMainItemClass(isMenuActive)}>
+                  {renderIconBadge(BookOpen, 'text-amber-500 dark:text-amber-400', 'text-slate-400 dark:text-slate-500', isMenuActive)}
+                  <span className="flex-1 font-semibold">Carta & Menú</span>
+                </NavLink>
+              </div>
+            )}
 
-            {canShowSub('reservas') && (
+            {userPerms.canViewReservas && canShowSub('reservas') && (
               <div data-expanded-nav="reservas" className="relative">
                 <NavLink to="/reservas" onClick={onItemClick} className={getMainItemClass(isReservasActive)}>
                   {renderIconBadge(CalendarCheck, 'text-amber-500 dark:text-amber-400', 'text-slate-400 dark:text-slate-500', isReservasActive)}
@@ -476,7 +535,7 @@ export default function Sidebar({
               </div>
             )}
 
-            {canShowSub('gastos') && (
+            {userPerms.canViewGastos && canShowSub('gastos') && (
               <div data-expanded-nav="gastos" className="relative">
                 <NavLink to="/gastos" onClick={onItemClick} className={getMainItemClass(isGastosActive)}>
                   {renderIconBadge(TrendingDown, 'text-amber-500 dark:text-amber-400', 'text-slate-400 dark:text-slate-500', isGastosActive)}
@@ -498,54 +557,68 @@ export default function Sidebar({
               <span className="px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-500 text-[9px] font-black border border-indigo-500/20">RETAIL</span>
             </div>
 
-            <div data-expanded-nav="ferreteria-pos" className="relative">
-              <NavLink to="/pos" onClick={onItemClick} className={getMainItemClass(isPosActive)}>
-                {renderIconBadge(ShoppingBag, 'text-indigo-500 dark:text-indigo-400', 'text-slate-400 dark:text-slate-500', isPosActive)}
-                <span className="flex-1 font-semibold">Punto de Venta POS</span>
-              </NavLink>
-            </div>
+            {userPerms.canViewPOS && (
+              <div data-expanded-nav="ferreteria-pos" className="relative">
+                <NavLink to="/pos" onClick={onItemClick} className={getMainItemClass(isPosActive)}>
+                  {renderIconBadge(ShoppingBag, 'text-indigo-500 dark:text-indigo-400', 'text-slate-400 dark:text-slate-500', isPosActive)}
+                  <span className="flex-1 font-semibold">Punto de Venta POS</span>
+                </NavLink>
+              </div>
+            )}
 
-            <div data-expanded-nav="ferreteria-inventario" className="relative">
-              <NavLink to="/inventario" onClick={onItemClick} className={getMainItemClass(isInventarioActive)}>
-                {renderIconBadge(Boxes, 'text-indigo-500 dark:text-indigo-400', 'text-slate-400 dark:text-slate-500', isInventarioActive)}
-                <span className="flex-1 font-semibold">Inventario & Kardex</span>
-              </NavLink>
-            </div>
+            {userPerms.canViewInventario && canShowSub('inventario_ferreteria') && (
+              <div data-expanded-nav="ferreteria-inventario" className="relative">
+                <NavLink to="/inventario" onClick={onItemClick} className={getMainItemClass(isInventarioActive)}>
+                  {renderIconBadge(Boxes, 'text-indigo-500 dark:text-indigo-400', 'text-slate-400 dark:text-slate-500', isInventarioActive)}
+                  <span className="flex-1 font-semibold">Inventario & Kardex</span>
+                </NavLink>
+              </div>
+            )}
 
-            <div data-expanded-nav="ferreteria-ventas" className="relative">
-              <NavLink to="/ventas" onClick={onItemClick} className={getMainItemClass(isVentasActive)}>
-                {renderIconBadge(Receipt, 'text-indigo-500 dark:text-indigo-400', 'text-slate-400 dark:text-slate-500', isVentasActive)}
-                <span className="flex-1 font-semibold">Ventas & Facturación</span>
-              </NavLink>
-            </div>
+            {userPerms.canViewVentas && canShowSub('ventas_ferreteria') && (
+              <div data-expanded-nav="ferreteria-ventas" className="relative">
+                <NavLink to="/ventas" onClick={onItemClick} className={getMainItemClass(isVentasActive)}>
+                  {renderIconBadge(Receipt, 'text-indigo-500 dark:text-indigo-400', 'text-slate-400 dark:text-slate-500', isVentasActive)}
+                  <span className="flex-1 font-semibold">Ventas & Facturación</span>
+                </NavLink>
+              </div>
+            )}
 
-            <div data-expanded-nav="ferreteria-caja" className="relative">
-              <NavLink to="/caja" onClick={onItemClick} className={getMainItemClass(isCajaFerreteriaActive)}>
-                {renderIconBadge(Wallet, 'text-indigo-500 dark:text-indigo-400', 'text-slate-400 dark:text-slate-500', isCajaFerreteriaActive)}
-                <span className="flex-1 font-semibold">Caja & Finanzas</span>
-              </NavLink>
-            </div>
+            {userPerms.canViewCaja && (
+              <div data-expanded-nav="ferreteria-caja" className="relative">
+                <NavLink to="/caja" onClick={onItemClick} className={getMainItemClass(isCajaFerreteriaActive)}>
+                  {renderIconBadge(Wallet, 'text-indigo-500 dark:text-indigo-400', 'text-slate-400 dark:text-slate-500', isCajaFerreteriaActive)}
+                  <span className="flex-1 font-semibold">Caja & Finanzas</span>
+                </NavLink>
+              </div>
+            )}
 
-            <div data-expanded-nav="ferreteria-clientes" className="relative">
-              <NavLink to="/clientes" onClick={onItemClick} className={getMainItemClass(isClientesActive)}>
-                {renderIconBadge(Users, 'text-indigo-500 dark:text-indigo-400', 'text-slate-400 dark:text-slate-500', isClientesActive)}
-                <span className="flex-1 font-semibold">Clientes & Obras</span>
-              </NavLink>
-            </div>
+            {userPerms.canViewClientes && canShowSub('clientes_obras') && (
+              <div data-expanded-nav="ferreteria-clientes" className="relative">
+                <NavLink to="/clientes" onClick={onItemClick} className={getMainItemClass(isClientesActive)}>
+                  {renderIconBadge(Users, 'text-indigo-500 dark:text-indigo-400', 'text-slate-400 dark:text-slate-500', isClientesActive)}
+                  <span className="flex-1 font-semibold">Clientes & Obras</span>
+                </NavLink>
+              </div>
+            )}
 
-            <div data-expanded-nav="ferreteria-cotizaciones" className="relative">
-              <NavLink to="/cotizaciones" onClick={onItemClick} className={getMainItemClass(isCotizacionesActive)}>
-                {renderIconBadge(FileText, 'text-indigo-500 dark:text-indigo-400', 'text-slate-400 dark:text-slate-500', isCotizacionesActive)}
-                <span className="flex-1 font-semibold">Cotizaciones</span>
-              </NavLink>
-            </div>
+            {userPerms.canViewCotizaciones && canShowSub('cotizaciones') && (
+              <div data-expanded-nav="ferreteria-cotizaciones" className="relative">
+                <NavLink to="/cotizaciones" onClick={onItemClick} className={getMainItemClass(isCotizacionesActive)}>
+                  {renderIconBadge(FileText, 'text-indigo-500 dark:text-indigo-400', 'text-slate-400 dark:text-slate-500', isCotizacionesActive)}
+                  <span className="flex-1 font-semibold">Cotizaciones</span>
+                </NavLink>
+              </div>
+            )}
 
-            <div data-expanded-nav="ferreteria-compras" className="relative">
-              <NavLink to="/compras" onClick={onItemClick} className={getMainItemClass(isComprasActive)}>
-                {renderIconBadge(Building2, 'text-indigo-500 dark:text-indigo-400', 'text-slate-400 dark:text-slate-500', isComprasActive)}
-                <span className="flex-1 font-semibold">Compras & Proveedores</span>
-              </NavLink>
-            </div>
+            {userPerms.canViewCompras && canShowSub('compras_proveedores') && (
+              <div data-expanded-nav="ferreteria-compras" className="relative">
+                <NavLink to="/compras" onClick={onItemClick} className={getMainItemClass(isComprasActive)}>
+                  {renderIconBadge(Building2, 'text-indigo-500 dark:text-indigo-400', 'text-slate-400 dark:text-slate-500', isComprasActive)}
+                  <span className="flex-1 font-semibold">Compras & Proveedores</span>
+                </NavLink>
+              </div>
+            )}
           </>
         )}
 
@@ -560,14 +633,16 @@ export default function Sidebar({
               <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 text-[9px] font-black border border-emerald-500/20">DIGEMID</span>
             </div>
 
-            <div data-expanded-nav="botica-pos" className="relative">
-              <NavLink to="/dispensacion" onClick={onItemClick} className={getMainItemClass(isDispensacionActive)}>
-                {renderIconBadge(Pill, 'text-emerald-500 dark:text-emerald-400', 'text-slate-400 dark:text-slate-500', isDispensacionActive)}
-                <span className="flex-1 font-semibold">Dispensación POS (F2)</span>
-              </NavLink>
-            </div>
+            {userPerms.canViewDispensacion && (
+              <div data-expanded-nav="botica-pos" className="relative">
+                <NavLink to="/dispensacion" onClick={onItemClick} className={getMainItemClass(isDispensacionActive)}>
+                  {renderIconBadge(Pill, 'text-emerald-500 dark:text-emerald-400', 'text-slate-400 dark:text-slate-500', isDispensacionActive)}
+                  <span className="flex-1 font-semibold">Dispensación POS (F2)</span>
+                </NavLink>
+              </div>
+            )}
 
-            {canShowSub('medicamentos') && (
+            {userPerms.canViewMedicamentos && canShowSub('medicamentos') && (
               <div data-expanded-nav="botica-meds" className="relative">
                 <NavLink to="/medicamentos" onClick={onItemClick} className={getMainItemClass(isMedicamentosActive)}>
                   {renderIconBadge(Boxes, 'text-emerald-500 dark:text-emerald-400', 'text-slate-400 dark:text-slate-500', isMedicamentosActive)}
@@ -576,7 +651,7 @@ export default function Sidebar({
               </div>
             )}
 
-            {canShowSub('lotes_fefo') && (
+            {userPerms.canViewLotes && canShowSub('lotes_fefo') && (
               <div data-expanded-nav="botica-lotes" className="relative">
                 <NavLink to="/lotes" onClick={onItemClick} className={getMainItemClass(isLotesActive)}>
                   {renderIconBadge(CalendarCheck, 'text-emerald-500 dark:text-emerald-400', 'text-slate-400 dark:text-slate-500', isLotesActive)}
@@ -585,7 +660,7 @@ export default function Sidebar({
               </div>
             )}
 
-            {canShowSub('inventario_botica') && (
+            {userPerms.canViewInventario && canShowSub('inventario_botica') && (
               <div data-expanded-nav="botica-inv" className="relative">
                 <NavLink to="/inventario-botica" onClick={onItemClick} className={getMainItemClass(isInventarioBoticaActive)}>
                   {renderIconBadge(Layers, 'text-emerald-500 dark:text-emerald-400', 'text-slate-400 dark:text-slate-500', isInventarioBoticaActive)}
@@ -594,7 +669,7 @@ export default function Sidebar({
               </div>
             )}
 
-            {canShowSub('temperatura') && (
+            {userPerms.canViewTemperatura && canShowSub('temperatura') && (
               <div data-expanded-nav="botica-temp" className="relative">
                 <NavLink to="/temperatura" onClick={onItemClick} className={getMainItemClass(isTemperaturaActive)}>
                   {renderIconBadge(Flame, 'text-emerald-500 dark:text-emerald-400', 'text-slate-400 dark:text-slate-500', isTemperaturaActive)}
@@ -603,7 +678,7 @@ export default function Sidebar({
               </div>
             )}
 
-            {canShowSub('digemid_opm') && (
+            {userPerms.canViewDigemid && canShowSub('digemid_opm') && (
               <div data-expanded-nav="botica-digemid" className="relative">
                 <NavLink to="/digemid" onClick={onItemClick} className={getMainItemClass(isDigemidActive)}>
                   {renderIconBadge(FileText, 'text-emerald-500 dark:text-emerald-400', 'text-slate-400 dark:text-slate-500', isDigemidActive)}
@@ -612,7 +687,7 @@ export default function Sidebar({
               </div>
             )}
 
-            {canShowSub('bajas_cuarentena') && (
+            {userPerms.canViewBajas && canShowSub('bajas_cuarentena') && (
               <div data-expanded-nav="botica-bajas" className="relative">
                 <NavLink to="/bajas-sanitarias" onClick={onItemClick} className={getMainItemClass(isBajasActive)}>
                   {renderIconBadge(TrendingDown, 'text-emerald-500 dark:text-emerald-400', 'text-slate-400 dark:text-slate-500', isBajasActive)}
@@ -634,14 +709,16 @@ export default function Sidebar({
               <span className="px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-500 text-[9px] font-black border border-violet-500/20">PMS</span>
             </div>
 
-            <div data-expanded-nav="hospedaje-rack" className="relative">
-              <NavLink to="/habitaciones" onClick={onItemClick} className={getMainItemClass(isHabitacionesActive)}>
-                {renderIconBadge(Hotel, 'text-violet-500 dark:text-violet-400', 'text-slate-400 dark:text-slate-500', isHabitacionesActive)}
-                <span className="flex-1 font-semibold">Rack Habitaciones (F3)</span>
-              </NavLink>
-            </div>
+            {userPerms.canViewRack && (
+              <div data-expanded-nav="hospedaje-rack" className="relative">
+                <NavLink to="/habitaciones" onClick={onItemClick} className={getMainItemClass(isHabitacionesActive)}>
+                  {renderIconBadge(Hotel, 'text-violet-500 dark:text-violet-400', 'text-slate-400 dark:text-slate-500', isHabitacionesActive)}
+                  <span className="flex-1 font-semibold">Rack Habitaciones (F3)</span>
+                </NavLink>
+              </div>
+            )}
 
-            {canShowSub('reservas_hotel') && (
+            {userPerms.canViewReservasHotel && canShowSub('reservas_hotel') && (
               <div data-expanded-nav="hospedaje-reservas" className="relative">
                 <NavLink to="/reservas-hotel" onClick={onItemClick} className={getMainItemClass(isReservasHotelActive)}>
                   {renderIconBadge(CalendarCheck, 'text-violet-500 dark:text-violet-400', 'text-slate-400 dark:text-slate-500', isReservasHotelActive)}
@@ -650,7 +727,7 @@ export default function Sidebar({
               </div>
             )}
 
-            {canShowSub('huespedes') && (
+            {userPerms.canViewHuespedes && canShowSub('huespedes') && (
               <div data-expanded-nav="hospedaje-huespedes" className="relative">
                 <NavLink to="/huespedes" onClick={onItemClick} className={getMainItemClass(isHuespedesActive)}>
                   {renderIconBadge(Users, 'text-violet-500 dark:text-violet-400', 'text-slate-400 dark:text-slate-500', isHuespedesActive)}
@@ -659,7 +736,7 @@ export default function Sidebar({
               </div>
             )}
 
-            {canShowSub('limpieza') && (
+            {userPerms.canViewLimpieza && canShowSub('limpieza') && (
               <div data-expanded-nav="hospedaje-limpieza" className="relative">
                 <NavLink to="/limpieza-hotel" onClick={onItemClick} className={getMainItemClass(isLimpiezaHotelActive)}>
                   {renderIconBadge(Sparkles, 'text-violet-500 dark:text-violet-400', 'text-slate-400 dark:text-slate-500', isLimpiezaHotelActive)}
@@ -668,7 +745,7 @@ export default function Sidebar({
               </div>
             )}
 
-            {canShowSub('tarifas') && (
+            {userPerms.canViewTarifas && canShowSub('tarifas') && (
               <div data-expanded-nav="hospedaje-tarifas" className="relative">
                 <NavLink to="/tarifas-hotel" onClick={onItemClick} className={getMainItemClass(isTarifasHotelActive)}>
                   {renderIconBadge(Sliders, 'text-violet-500 dark:text-violet-400', 'text-slate-400 dark:text-slate-500', isTarifasHotelActive)}
@@ -677,7 +754,7 @@ export default function Sidebar({
               </div>
             )}
 
-            {canShowSub('pisos') && (
+            {userPerms.canViewPisos && canShowSub('pisos') && (
               <div data-expanded-nav="hospedaje-pisos" className="relative">
                 <NavLink to="/pisos-hotel" onClick={onItemClick} className={getMainItemClass(isPisosHotelActive)}>
                   {renderIconBadge(Layers, 'text-violet-500 dark:text-violet-400', 'text-slate-400 dark:text-slate-500', isPisosHotelActive)}
@@ -686,14 +763,16 @@ export default function Sidebar({
               </div>
             )}
 
-            <div data-expanded-nav="hospedaje-caja" className="relative">
-              <NavLink to="/caja-hotel" onClick={onItemClick} className={getMainItemClass(isCajaHotelActive)}>
-                {renderIconBadge(Wallet, 'text-violet-500 dark:text-violet-400', 'text-slate-400 dark:text-slate-500', isCajaHotelActive)}
-                <span className="flex-1 font-semibold">Caja Recepción</span>
-              </NavLink>
-            </div>
+            {userPerms.canViewCaja && canShowSub('caja_hotel') && (
+              <div data-expanded-nav="hospedaje-caja" className="relative">
+                <NavLink to="/caja-hotel" onClick={onItemClick} className={getMainItemClass(isCajaHotelActive)}>
+                  {renderIconBadge(Wallet, 'text-violet-500 dark:text-violet-400', 'text-slate-400 dark:text-slate-500', isCajaHotelActive)}
+                  <span className="flex-1 font-semibold">Caja Recepción</span>
+                </NavLink>
+              </div>
+            )}
 
-            {canShowSub('pos_hotel') && (
+            {userPerms.canViewPosHotel && canShowSub('pos_hotel') && (
               <div data-expanded-nav="hospedaje-pos" className="relative">
                 <NavLink to="/pos-hotel" onClick={onItemClick} className={getMainItemClass(isPosHotelActive)}>
                   {renderIconBadge(ShoppingBag, 'text-violet-500 dark:text-violet-400', 'text-slate-400 dark:text-slate-500', isPosHotelActive)}
@@ -704,59 +783,69 @@ export default function Sidebar({
           </>
         )}
 
-        {/* SECCIÓN CORE / ADMINISTRACIÓN COMPARTIDA */}
-        <div className="px-3 pt-4 pb-1.5 text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center justify-between">
-          <span className="flex items-center gap-1.5 tracking-widest font-black text-slate-500 dark:text-slate-400">
-            <span className="text-sm leading-none select-none">⚙️</span>
-            <span>Gestión Suite</span>
-          </span>
-        </div>
+        {/* SECCIÓN CORE / ADMINISTRACIÓN COMPARTIDA (Solo roles autorizados) */}
+        {hasCoreSuite && (
+          <>
+            <div className="px-3 pt-4 pb-1.5 text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center justify-between">
+              <span className="flex items-center gap-1.5 tracking-widest font-black text-slate-500 dark:text-slate-400">
+                <span className="text-sm leading-none select-none">⚙️</span>
+                <span>Gestión Suite</span>
+              </span>
+            </div>
 
-        <div data-expanded-nav="core-caja" className="relative">
-          <NavLink
-            to="/caja"
-            onClick={onItemClick}
-            className={getMainItemClass(location.pathname.startsWith('/caja'))}
-          >
-            {renderIconBadge(Wallet, 'text-emerald-500 dark:text-emerald-400', 'text-slate-400 dark:text-slate-500', location.pathname.startsWith('/caja'))}
-            <span className="flex-1 font-semibold">Caja & Historial Turnos</span>
-          </NavLink>
-        </div>
+            {userPerms.canViewCaja && (
+              <div data-expanded-nav="core-caja" className="relative">
+                <NavLink
+                  to="/caja"
+                  onClick={onItemClick}
+                  className={getMainItemClass(location.pathname.startsWith('/caja'))}
+                >
+                  {renderIconBadge(Wallet, 'text-emerald-500 dark:text-emerald-400', 'text-slate-400 dark:text-slate-500', location.pathname.startsWith('/caja'))}
+                  <span className="flex-1 font-semibold">Caja & Historial Turnos</span>
+                </NavLink>
+              </div>
+            )}
 
-        <div data-expanded-nav="core-facturacion-sunat" className="relative">
-          <NavLink
-            to="/facturacion-sunat"
-            onClick={onItemClick}
-            className={getMainItemClass(location.pathname.startsWith('/facturacion-sunat'))}
-          >
-            {renderIconBadge(Receipt, 'text-emerald-500 dark:text-emerald-400', 'text-slate-400 dark:text-slate-500', location.pathname.startsWith('/facturacion-sunat'))}
-            <span className="flex-1 font-semibold">Facturación SUNAT UBL</span>
-          </NavLink>
-        </div>
+            {userPerms.canViewFacturacionSunat && (
+              <div data-expanded-nav="core-facturacion-sunat" className="relative">
+                <NavLink
+                  to="/facturacion-sunat"
+                  onClick={onItemClick}
+                  className={getMainItemClass(location.pathname.startsWith('/facturacion-sunat'))}
+                >
+                  {renderIconBadge(Receipt, 'text-emerald-500 dark:text-emerald-400', 'text-slate-400 dark:text-slate-500', location.pathname.startsWith('/facturacion-sunat'))}
+                  <span className="flex-1 font-semibold">Facturación SUNAT UBL</span>
+                </NavLink>
+              </div>
+            )}
 
-        {esAdmin && (
-          <div data-expanded-nav="administracion" className="relative">
-            <NavLink
-              to="/administracion"
-              onClick={onItemClick}
-              className={getMainItemClass(isAdministracionActive)}
-            >
-              {renderIconBadge(Building2, 'text-blue-500 dark:text-blue-400', 'text-slate-400 dark:text-slate-500', isAdministracionActive)}
-              <span className="flex-1 font-semibold">Administración & Sedes</span>
-            </NavLink>
-          </div>
+            {userPerms.canViewAdministracion && (
+              <div data-expanded-nav="administracion" className="relative">
+                <NavLink
+                  to="/administracion"
+                  onClick={onItemClick}
+                  className={getMainItemClass(isAdministracionActive)}
+                >
+                  {renderIconBadge(Building2, 'text-blue-500 dark:text-blue-400', 'text-slate-400 dark:text-slate-500', isAdministracionActive)}
+                  <span className="flex-1 font-semibold">Administración & Sedes</span>
+                </NavLink>
+              </div>
+            )}
+
+            {userPerms.canViewConfiguracion && (
+              <div data-expanded-nav="configuracion" className="relative">
+                <NavLink
+                  to="/configuracion"
+                  onClick={onItemClick}
+                  className={getMainItemClass(isConfiguracionActive)}
+                >
+                  {renderIconBadge(Settings, 'text-slate-700 dark:text-slate-200', 'text-slate-400 dark:text-slate-500', isConfiguracionActive)}
+                  <span className="flex-1 font-semibold">Configuración</span>
+                </NavLink>
+              </div>
+            )}
+          </>
         )}
-
-        <div data-expanded-nav="configuracion" className="relative">
-          <NavLink
-            to="/configuracion"
-            onClick={onItemClick}
-            className={getMainItemClass(isConfiguracionActive)}
-          >
-            {renderIconBadge(Settings, 'text-slate-700 dark:text-slate-200', 'text-slate-400 dark:text-slate-500', isConfiguracionActive)}
-            <span className="flex-1 font-semibold">Configuración</span>
-          </NavLink>
-        </div>
 
         {/* ACCESO SUPERADMIN */}
         {isSuperAdmin && (
@@ -820,7 +909,7 @@ export default function Sidebar({
                     {isSuperAdminPlataforma ? 'HEIS SAC' : (empresa?.nombre || 'HEIS SAC')}
                   </h1>
                   <span className="inline-block px-1.5 py-0.5 rounded-full text-[8.5px] font-black uppercase tracking-wider bg-[#02CBA9]/10 text-[#02CBA9] dark:text-[#1CC0F9] border border-[#02CBA9]/20 truncate">
-                    {isSuperAdminPlataforma ? 'Operador Maestro' : (isSuperAdmin ? 'Modo Inspector' : 'Enterprise Cloud')}
+                    {isSuperAdminPlataforma ? 'Operador Maestro' : (isSuperAdmin ? 'Modo Inspector' : (user?.rol || 'Enterprise Cloud'))}
                   </span>
                 </div>
               </div>
@@ -944,27 +1033,40 @@ export default function Sidebar({
               </>
             ) : (
               <>
-                <button
-                  data-collapsed-category="dashboard"
-                  onClick={() => navigate('/dashboard')}
-                  className={getCollapsedItemClass(isDashboardActive)}
-                  data-tooltip="Dashboard Principal"
-                >
-                  <LayoutDashboard className={`w-5 h-5 ${isDashboardActive ? 'text-sky-500 dark:text-sky-400' : 'text-slate-400'}`} />
-                </button>
-
-                {hasRestaurante && (
+                {userPerms.canViewDashboard && (
                   <button
-                    data-collapsed-category="operaciones"
-                    onClick={() => navigate('/mesas')}
-                    className={getCollapsedItemClass(isOperacionesActive)}
-                    data-tooltip="Salón & Mesas (F1)"
+                    data-collapsed-category="dashboard"
+                    onClick={() => navigate('/dashboard')}
+                    className={getCollapsedItemClass(isDashboardActive)}
+                    data-tooltip="Dashboard Principal"
                   >
-                    <UtensilsCrossed className={`w-5 h-5 ${isOperacionesActive ? 'text-amber-500 dark:text-amber-400' : 'text-slate-400'}`} />
+                    <LayoutDashboard className={`w-5 h-5 ${isDashboardActive ? 'text-sky-500 dark:text-sky-400' : 'text-slate-400'}`} />
                   </button>
                 )}
 
                 {hasRestaurante && (
+                  userPerms.canViewCocina && !userPerms.canViewMesas ? (
+                    <button
+                      data-collapsed-category="cocina"
+                      onClick={() => navigate('/cocina')}
+                      className={getCollapsedItemClass(location.pathname === '/cocina')}
+                      data-tooltip="Cocina KDS"
+                    >
+                      <ChefHat className={`w-5 h-5 ${location.pathname === '/cocina' ? 'text-rose-500 dark:text-rose-400' : 'text-slate-400'}`} />
+                    </button>
+                  ) : (
+                    <button
+                      data-collapsed-category="operaciones"
+                      onClick={() => navigate('/mesas')}
+                      className={getCollapsedItemClass(isOperacionesActive)}
+                      data-tooltip="Salón & Mesas (F1)"
+                    >
+                      <UtensilsCrossed className={`w-5 h-5 ${isOperacionesActive ? 'text-amber-500 dark:text-amber-400' : 'text-slate-400'}`} />
+                    </button>
+                  )
+                )}
+
+                {hasRestaurante && userPerms.canViewMenu && (
                   <button
                     data-collapsed-category="menu"
                     onClick={() => navigate('/menu')}
@@ -978,11 +1080,11 @@ export default function Sidebar({
                 {hasFerreteria && (
                   <button
                     data-collapsed-category="ferreteria-pos"
-                    onClick={() => navigate('/pos')}
-                    className={getCollapsedItemClass(isPosActive)}
-                    data-tooltip="Punto de Venta Ferretería"
+                    onClick={() => navigate(userPerms.canViewPOS ? '/pos' : (userPerms.canViewCotizaciones ? '/cotizaciones' : '/inventario'))}
+                    className={getCollapsedItemClass(isFerreteriaActive)}
+                    data-tooltip="Ferretería & Retail"
                   >
-                    <ShoppingBag className={`w-5 h-5 ${isPosActive ? 'text-indigo-500 dark:text-indigo-400' : 'text-slate-400'}`} />
+                    <ShoppingBag className={`w-5 h-5 ${isFerreteriaActive ? 'text-indigo-500 dark:text-indigo-400' : 'text-slate-400'}`} />
                   </button>
                 )}
 
@@ -990,34 +1092,36 @@ export default function Sidebar({
                   <button
                     data-collapsed-category="botica-pos"
                     onClick={() => navigate('/dispensacion')}
-                    className={getCollapsedItemClass(isDispensacionActive)}
+                    className={getCollapsedItemClass(isBoticaActive)}
                     data-tooltip="Dispensación Farmacia (F2)"
                   >
-                    <Pill className={`w-5 h-5 ${isDispensacionActive ? 'text-emerald-500 dark:text-emerald-400' : 'text-slate-400'}`} />
+                    <Pill className={`w-5 h-5 ${isBoticaActive ? 'text-emerald-500 dark:text-emerald-400' : 'text-slate-400'}`} />
                   </button>
                 )}
 
                 {hasHospedaje && (
                   <button
                     data-collapsed-category="hospedaje-rack"
-                    onClick={() => navigate('/habitaciones')}
-                    className={getCollapsedItemClass(isHabitacionesActive)}
-                    data-tooltip="Rack de Habitaciones Hotel (F3)"
+                    onClick={() => navigate(userPerms.canViewLimpieza && !userPerms.canViewRack ? '/limpieza-hotel' : '/habitaciones')}
+                    className={getCollapsedItemClass(isHospedajeActive)}
+                    data-tooltip="Hospedaje & Hotel"
                   >
-                    <Hotel className={`w-5 h-5 ${isHabitacionesActive ? 'text-violet-500 dark:text-violet-400' : 'text-slate-400'}`} />
+                    <Hotel className={`w-5 h-5 ${isHospedajeActive ? 'text-violet-500 dark:text-violet-400' : 'text-slate-400'}`} />
                   </button>
                 )}
 
-                <button
-                  data-collapsed-category="caja"
-                  onClick={() => navigate('/caja')}
-                  className={getCollapsedItemClass(location.pathname.startsWith('/caja'))}
-                  data-tooltip="Caja & Historial Turnos"
-                >
-                  <Wallet className={`w-5 h-5 ${location.pathname.startsWith('/caja') ? 'text-emerald-500 dark:text-emerald-400' : 'text-slate-400'}`} />
-                </button>
+                {userPerms.canViewCaja && (
+                  <button
+                    data-collapsed-category="caja"
+                    onClick={() => navigate('/caja')}
+                    className={getCollapsedItemClass(location.pathname.startsWith('/caja'))}
+                    data-tooltip="Caja & Historial Turnos"
+                  >
+                    <Wallet className={`w-5 h-5 ${location.pathname.startsWith('/caja') ? 'text-emerald-500 dark:text-emerald-400' : 'text-slate-400'}`} />
+                  </button>
+                )}
 
-                {esAdmin && (
+                {userPerms.canViewAdministracion && (
                   <button
                     data-collapsed-category="administracion"
                     onClick={() => navigate('/administracion')}
@@ -1028,14 +1132,16 @@ export default function Sidebar({
                   </button>
                 )}
 
-                <button
-                  data-collapsed-category="configuracion"
-                  onClick={() => navigate('/configuracion')}
-                  className={getCollapsedItemClass(isConfiguracionActive)}
-                  data-tooltip="Configuración"
-                >
-                  <Settings className={`w-5 h-5 ${isConfiguracionActive ? 'text-slate-700 dark:text-slate-200' : 'text-slate-400'}`} />
-                </button>
+                {userPerms.canViewConfiguracion && (
+                  <button
+                    data-collapsed-category="configuracion"
+                    onClick={() => navigate('/configuracion')}
+                    className={getCollapsedItemClass(isConfiguracionActive)}
+                    data-tooltip="Configuración"
+                  >
+                    <Settings className={`w-5 h-5 ${isConfiguracionActive ? 'text-slate-700 dark:text-slate-200' : 'text-slate-400'}`} />
+                  </button>
+                )}
               </>
             )}
 

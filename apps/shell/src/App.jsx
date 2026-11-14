@@ -9,6 +9,10 @@ import {
   useRealtime,
   AdministracionHub,
   api,
+  isSuperAdminUser,
+  canUserAccessModule,
+  getUserPermissions,
+  getRoleLandingRoute,
 } from '@heis/core';
 
 // Páginas Shell
@@ -102,36 +106,80 @@ function RequireSuperAdmin({ children }) {
   return children;
 }
 
-// Guard de Módulo y Submódulo
+// Guard de Módulo y Submódulo con Aislamiento RBAC Estricto
 function RequireModuloRoute({ modulo, submodulo = null, children }) {
   const { user, empresa } = useAuthStore();
   const modulos = useModulos();
-  const isSuperAdmin = user?.rol === 'superadmin' || user?.role === 'superadmin';
+  const isSuperAdmin = isSuperAdminUser(user);
 
   if (isSuperAdmin && !empresa) return children;
-  if (modulo !== 'core' && (!modulos?.lista || !modulos.lista.includes(modulo))) {
-    return <Navigate to="/dashboard" replace />;
+
+  const landingRoute = getRoleLandingRoute(user, modulos?.lista);
+
+  // 1. Validar acceso vertical al módulo según la empresa y el rol del usuario
+  if (!canUserAccessModule(user, modulo, modulos?.lista)) {
+    return <Navigate to={landingRoute} replace />;
   }
+
+  // 2. Validar submódulo activo en la empresa
   if (submodulo && modulos?.submodulos && modulos.submodulos[submodulo] === false) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to={landingRoute} replace />;
   }
+
+  // 3. Validar permisos granulares del rol para la pantalla solicitada
+  const userPerms = getUserPermissions(user);
+  if (!userPerms.isGeneralAdmin) {
+    if (submodulo === 'cocina' && !userPerms.canViewCocina) return <Navigate to={landingRoute} replace />;
+    if (submodulo === 'mesas' && !userPerms.canViewMesas) return <Navigate to={landingRoute} replace />;
+    if (submodulo === 'menu' && !userPerms.canViewMenu) return <Navigate to={landingRoute} replace />;
+    if (submodulo === 'reservas' && !userPerms.canViewReservas) return <Navigate to={landingRoute} replace />;
+    if (submodulo === 'gastos' && !userPerms.canViewGastos) return <Navigate to={landingRoute} replace />;
+    if (submodulo === 'pos_ferreteria' && !userPerms.canViewPOS) return <Navigate to={landingRoute} replace />;
+    if (submodulo === 'inventario_ferreteria' && !userPerms.canViewInventario) return <Navigate to={landingRoute} replace />;
+    if (submodulo === 'ventas_ferreteria' && !userPerms.canViewVentas) return <Navigate to={landingRoute} replace />;
+    if (submodulo === 'cotizaciones' && !userPerms.canViewCotizaciones) return <Navigate to={landingRoute} replace />;
+    if (submodulo === 'compras_proveedores' && !userPerms.canViewCompras) return <Navigate to={landingRoute} replace />;
+    if (submodulo === 'clientes_obras' && !userPerms.canViewClientes) return <Navigate to={landingRoute} replace />;
+    if (submodulo === 'dispensacion' && !userPerms.canViewDispensacion) return <Navigate to={landingRoute} replace />;
+    if (submodulo === 'medicamentos' && !userPerms.canViewMedicamentos) return <Navigate to={landingRoute} replace />;
+    if (submodulo === 'lotes_fefo' && !userPerms.canViewLotes) return <Navigate to={landingRoute} replace />;
+    if (submodulo === 'inventario_botica' && !userPerms.canViewInventario) return <Navigate to={landingRoute} replace />;
+    if (submodulo === 'temperatura' && !userPerms.canViewTemperatura) return <Navigate to={landingRoute} replace />;
+    if (submodulo === 'digemid_opm' && !userPerms.canViewDigemid) return <Navigate to={landingRoute} replace />;
+    if (submodulo === 'bajas_cuarentena' && !userPerms.canViewBajas) return <Navigate to={landingRoute} replace />;
+    if (submodulo === 'rack' && !userPerms.canViewRack) return <Navigate to={landingRoute} replace />;
+    if (submodulo === 'reservas_hotel' && !userPerms.canViewReservasHotel) return <Navigate to={landingRoute} replace />;
+    if (submodulo === 'huespedes' && !userPerms.canViewHuespedes) return <Navigate to={landingRoute} replace />;
+    if (submodulo === 'limpieza' && !userPerms.canViewLimpieza) return <Navigate to={landingRoute} replace />;
+    if (submodulo === 'tarifas' && !userPerms.canViewTarifas) return <Navigate to={landingRoute} replace />;
+    if (submodulo === 'pisos' && !userPerms.canViewPisos) return <Navigate to={landingRoute} replace />;
+    if (submodulo === 'caja_hotel' && !userPerms.canViewCaja) return <Navigate to={landingRoute} replace />;
+    if (submodulo === 'pos_hotel' && !userPerms.canViewPosHotel) return <Navigate to={landingRoute} replace />;
+  }
+
   return children;
 }
 
 function RootRedirect() {
   const { user, empresa } = useAuthStore();
-  const isSuperAdmin = user?.rol === 'superadmin' || user?.role === 'superadmin';
+  const modulos = useModulos();
+  const isSuperAdmin = isSuperAdminUser(user);
   if (isSuperAdmin && !empresa) {
     return <Navigate to="/superadmin" replace />;
   }
-  return <Navigate to="/dashboard" replace />;
+  return <Navigate to={getRoleLandingRoute(user, modulos?.lista)} replace />;
 }
 
 function DashboardGuardRoute() {
   const { user, empresa } = useAuthStore();
-  const isSuperAdmin = user?.rol === 'superadmin' || user?.role === 'superadmin';
+  const modulos = useModulos();
+  const isSuperAdmin = isSuperAdminUser(user);
   if (isSuperAdmin && !empresa) {
     return <Navigate to="/superadmin" replace />;
+  }
+  const userPerms = getUserPermissions(user);
+  if (!userPerms.canViewDashboard) {
+    return <Navigate to={getRoleLandingRoute(user, modulos?.lista)} replace />;
   }
   return <Dashboard />;
 }
