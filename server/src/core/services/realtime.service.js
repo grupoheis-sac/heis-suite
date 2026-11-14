@@ -127,8 +127,13 @@ export function streamRealtimeEvents(req, res) {
   }
 }
 
+export function emitToTenantSucursal(empresaId, sucursalId, event, payload) {
+  emitTenantEvent(empresaId, event, payload, sucursalId);
+}
+
 export default {
   realtimeHub,
   emitTenantEvent,
+  emitToTenantSucursal,
   streamRealtimeEvents,
 };

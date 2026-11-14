@@ -134,6 +134,44 @@ export const ComprobanteElectronico = sequelize.define('ComprobanteElectronico',
     type: DataTypes.ENUM('PENDIENTE', 'ACEPTADO', 'OBSERVADO', 'RECHAZADO', 'ANULADO'),
     defaultValue: 'PENDIENTE',
   },
+  estado_sunat: {
+    type: DataTypes.ENUM(
+      'PENDIENTE',
+      'PROCESANDO_ENVIO',
+      'CONTINGENCIA_REINTENTAR',
+      'ACEPTADO',
+      'ACEPTADO_CON_OBSERVACIONES',
+      'RECHAZADO',
+      'ERROR_CRITICO'
+    ),
+    defaultValue: 'PENDIENTE',
+    allowNull: false,
+  },
+  intentos_envio: {
+    type: DataTypes.INTEGER,
+    defaultValue: 0,
+    allowNull: false,
+  },
+  proximo_reintento: {
+    type: DataTypes.DATE,
+    allowNull: true,
+  },
+  codigo_sunat: {
+    type: DataTypes.STRING(16),
+    allowNull: true,
+  },
+  ultimo_error_sunat: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+  },
+  xml_firmado_filename: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+  },
+  cdr_filename: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+  },
   sunat_codigo_respuesta: {
     type: DataTypes.STRING(10),
     allowNull: true,

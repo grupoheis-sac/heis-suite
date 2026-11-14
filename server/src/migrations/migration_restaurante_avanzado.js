@@ -1,6 +1,6 @@
 import sequelize from '../config/db.js';
 
-async function runMigration() {
+export async function up() {
   console.log('--- Migración: Módulo Restaurante Avanzado (Salón, Mesas, Canales) ---');
   
   const alterColumns = [
@@ -32,10 +32,16 @@ async function runMigration() {
   }
 
   console.log('--- Migración de Restaurante completada con éxito ---');
-  process.exit(0);
 }
 
-runMigration().catch((err) => {
-  console.error('Error fatal en migración:', err);
-  process.exit(1);
-});
+export const runMigration = up;
+export default { up };
+
+if (process.argv[1] && process.argv[1].includes('migration_restaurante_avanzado')) {
+  up()
+    .then(() => process.exit(0))
+    .catch((err) => {
+      console.error('Error fatal en migración:', err);
+      process.exit(1);
+    });
+}

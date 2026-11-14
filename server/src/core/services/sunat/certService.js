@@ -1,10 +1,78 @@
 import fs from 'fs';
+import fsPromises from 'fs/promises';
 import path from 'path';
+import crypto from 'node:crypto';
 import forge from 'node-forge';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+const STORAGE_ROOT = path.resolve(process.cwd(), 'storage');
+const CERTS_ROOT = path.resolve(process.cwd(), 'certs');
+const DEFAULT_KEY_HEX = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+const RAW_KEY = process.env.CERT_ENCRYPTION_KEY_HEX || DEFAULT_KEY_HEX;
+const MASTER_KEY = Buffer.from(RAW_KEY.length === 64 ? RAW_KEY : DEFAULT_KEY_HEX, 'hex');
+
+/**
+ * Previene ataques de Path Traversal garantizando que el archivo resuelva
+ * estrictamente dentro del directorio base y pertenezca al tenant actual.
+ */
+export function resolveSafeTenantPath(baseDir, empresaId, relativeFileName) {
+  const sanitizedFileName = path.basename(String(relativeFileName || '').replace(/\0/g, ''));
+  const tenantDir = path.resolve(baseDir, `tenant_${Number(empresaId || 1)}`);
+  const fullPath = path.resolve(tenantDir, sanitizedFileName);
+
+  if (!fullPath.startsWith(tenantDir + path.sep) && fullPath !== tenantDir) {
+    // Si no está en subdirectorio tenant, verificar si está en baseDir directamente como fallback
+    const fallbackPath = path.resolve(baseDir, sanitizedFileName);
+    if (fallbackPath.startsWith(path.resolve(baseDir) + path.sep)) {
+      return fallbackPath;
+    }
+    throw new Error('SECURITY_ALERT: Intento de Path Traversal detectado y bloqueado.');
+  }
+  return fullPath;
+}
+
+/**
+ * Cifra la contraseña del PFX con AES-256-GCM antes de guardarla en MySQL (modelo Empresa)
+ */
+export function encryptCertPassword(plainPassword) {
+  if (!plainPassword) return '';
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', MASTER_KEY, iv);
+  const encrypted = Buffer.concat([cipher.update(String(plainPassword), 'utf8'), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+  return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted.toString('hex')}`;
+}
+
+export function decryptCertPassword(cipherText) {
+  if (!cipherText) return '';
+  if (!String(cipherText).includes(':')) {
+    // Texto plano no cifrado (compatibilidad hacia atrás)
+    return String(cipherText);
+  }
+  const [ivHex, authTagHex, encryptedHex] = String(cipherText).split(':');
+  if (!ivHex || !authTagHex || !encryptedHex) {
+    return String(cipherText);
+  }
+  try {
+    const decipher = crypto.createDecipheriv('aes-256-gcm', MASTER_KEY, Buffer.from(ivHex, 'hex'));
+    decipher.setAuthTag(Buffer.from(authTagHex, 'hex'));
+    const decrypted = Buffer.concat([
+      decipher.update(Buffer.from(encryptedHex, 'hex')),
+      decipher.final(),
+    ]);
+    return decrypted.toString('utf8');
+  } catch (err) {
+    return String(cipherText);
+  }
+}
+
+export async function loadTenantPfxBuffer(empresaId, certFileName) {
+  const safePath = resolveSafeTenantPath(CERTS_ROOT, empresaId, certFileName);
+  return fsPromises.readFile(safePath);
+}
 
 /**
  * 🇵🇪 Servicio de Gestión de Certificados Digitales Tributarios (.pfx / .p12 / .pem)

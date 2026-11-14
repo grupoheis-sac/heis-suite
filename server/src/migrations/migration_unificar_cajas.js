@@ -169,6 +169,9 @@ export async function ejecutarMigracionUnificarCajas() {
   }
 }
 
+export const up = ejecutarMigracionUnificarCajas;
+export default { up: ejecutarMigracionUnificarCajas };
+
 if (process.argv[1] && process.argv[1].includes('migration_unificar_cajas')) {
   ejecutarMigracionUnificarCajas().then(() => process.exit(0));
 }

@@ -69,11 +69,17 @@ export const Usuario = sequelize.define('Usuario', {
     type: DataTypes.DATE,
     allowNull: true,
   },
+  token_version: {
+    type: DataTypes.INTEGER,
+    defaultValue: 1,
+    allowNull: false,
+  },
 }, {
   tableName: 'usuarios',
   indexes: [
     { fields: ['empresa_id'] },
     { fields: ['email'] },
+    { fields: ['id', 'token_version'] },
   ],
 });
 

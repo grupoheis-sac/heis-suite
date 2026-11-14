@@ -8,6 +8,9 @@
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
     "seed": "node src/utils/seeder.js",
+    "migrate": "node src/migrations/migrator.js up",
+    "migrate:undo": "node src/migrations/migrator.js down",
+    "migrate:status": "node src/migrations/migrator.js status",
     "migrate:cajas": "node src/migrations/migration_unificar_cajas.js"
   },
   "dependencies": {

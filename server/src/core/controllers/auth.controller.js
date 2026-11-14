@@ -53,6 +53,7 @@ export async function login(req, res) {
         rol: usuario.rol,
         empresa_id: usuario.empresa_id,
         sucursal_id: usuario.sucursal_id,
+        token_version: usuario.token_version ?? 1,
       },
       JWT_SECRET,
       { expiresIn: JWT_EXPIRES_IN }

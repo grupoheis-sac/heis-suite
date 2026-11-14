@@ -18,12 +18,25 @@ export async function verifyJWT(req, res, next) {
 
     const usuario = await Usuario.findByPk(decoded.id, {
       attributes: { exclude: ['password_hash'] },
+      skipTenant: true,
     });
 
     if (!usuario || !usuario.activo) {
       return res.status(401).json({
         success: false,
         error: 'Usuario inválido, inactivo o sesión expirada',
+      });
+    }
+
+    // Validación atómica de Token Version (revocación instantánea de sesiones)
+    if (
+      usuario.token_version !== undefined &&
+      decoded.token_version !== undefined &&
+      Number(usuario.token_version) !== Number(decoded.token_version)
+    ) {
+      return res.status(401).json({
+        success: false,
+        error: 'Sesión revocada o caducada. Por favor inicie sesión nuevamente.',
       });
     }
 
@@ -54,4 +67,3 @@ export function requireRole(...rolesPermitidos) {
     });
   };
 }
-
