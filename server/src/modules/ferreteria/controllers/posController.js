@@ -10,6 +10,7 @@ import {
 } from '../models/index.js';
 import { Usuario, CajaGeneral, CajaMovimientoGeneral } from '../../../core/models/index.js';
 import { emitirComprobanteUniversal } from '../../../core/services/sunatUbl.service.js';
+import { emitTenantEvent } from '../../../core/services/realtime.service.js';
 import { registrarAuditoria } from '../../../core/middleware/auditoria.middleware.js';
 
 export const getVentas = async (req, res, next) => {
@@ -347,6 +348,9 @@ export const crearVenta = async (req, res, next) => {
 
     await t.commit();
 
+    emitTenantEvent(req.empresa_id, 'caja:updated', { venta_id: nuevaVenta.id, total: totalVenta }, req.sucursal_id);
+    emitTenantEvent(req.empresa_id, 'venta:created', { venta_id: nuevaVenta.id, modulo: 'ferreteria' }, req.sucursal_id);
+
     await registrarAuditoria({
       modulo: 'ferreteria',
       accion: 'VENTA_POS',
@@ -416,6 +420,9 @@ export const anularVenta = async (req, res, next) => {
 
     await venta.update({ estado: 'Anulada' }, { transaction: t });
     await t.commit();
+
+    emitTenantEvent(req.empresa_id, 'caja:updated', { venta_id: nuevaVenta.id, total: totalVenta }, req.sucursal_id);
+    emitTenantEvent(req.empresa_id, 'venta:created', { venta_id: nuevaVenta.id, modulo: 'ferreteria' }, req.sucursal_id);
 
     await registrarAuditoria({
       modulo: 'ferreteria',

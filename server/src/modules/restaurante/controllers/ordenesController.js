@@ -2,6 +2,7 @@ import sequelize from '../../../config/db.js';
 import { Orden, OrdenDetalle, Mesa, Producto } from '../models/index.js';
 import { Usuario, CajaGeneral, CajaMovimientoGeneral } from '../../../core/models/index.js';
 import { emitirComprobanteUniversal } from '../../../core/services/sunatUbl.service.js';
+import { emitTenantEvent } from '../../../core/services/realtime.service.js';
 import { registrarAuditoria } from '../../../core/middleware/auditoria.middleware.js';
 
 export const agregarItemsAMesa = async (req, res, next) => {
@@ -132,6 +133,8 @@ export const enviarACocina = async (req, res, next) => {
       { status: 'cooking' },
       { where: { id: order_id, empresa_id: req.empresa_id, status: 'pending' } }
     );
+
+    emitTenantEvent(req.empresa_id, 'kds:updated', { order_id, status: 'cooking' }, req.sucursal_id);
 
     res.json({ success: true, message: 'Comanda enviada a Cocina y Bar.' });
   } catch (error) {
@@ -328,6 +331,15 @@ export const cobrarOrden = async (req, res, next) => {
       detalles: { total: totalFinal, metodo: payment_method, comprobante: document_type },
       req,
     });
+
+    emitTenantEvent(req.empresa_id, 'caja:updated', {
+      orden_id: orden.id,
+      total: totalFinal,
+      modulo: 'restaurante',
+    }, req.sucursal_id);
+    if (orden.table_id) {
+      emitTenantEvent(req.empresa_id, 'mesas:updated', { table_id: orden.table_id }, req.sucursal_id);
+    }
 
     res.json({
       success: true,

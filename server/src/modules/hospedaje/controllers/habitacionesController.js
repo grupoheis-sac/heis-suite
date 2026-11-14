@@ -1,5 +1,6 @@
 import { Habitacion, TipoHabitacion, Reserva, Huesped } from '../models/index.js';
 import { Usuario } from '../../../core/models/index.js';
+import { emitTenantEvent } from '../../../core/services/realtime.service.js';
 
 export const getHabitaciones = async (req, res) => {
   try {
@@ -72,6 +73,19 @@ export const actualizarEstado = async (req, res) => {
     if (notas !== undefined) updateData.limpieza_notas = notas;
 
     await hab.update(updateData);
+
+    emitTenantEvent(
+      req.empresa_id,
+      'rack:updated',
+      {
+        habitacion_id: hab.id,
+        numero: hab.numero,
+        estado: hab.estado,
+        estado_limpieza: hab.estado_limpieza,
+      },
+      req.sucursal_id
+    );
+
     res.json({ success: true, data: hab, message: 'Estado actualizado correctamente' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -100,6 +114,13 @@ export const crearHabitacion = async (req, res) => {
       empresa_id: req.empresa_id || 1,
       sucursal_id: req.sucursal_id || 1,
     });
+
+    emitTenantEvent(req.empresa_id, 'rack:updated', {
+      habitacion_id: hab.id,
+      numero: hab.numero,
+      estado: hab.estado,
+    }, req.sucursal_id);
+
     res.status(201).json({ success: true, data: hab });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

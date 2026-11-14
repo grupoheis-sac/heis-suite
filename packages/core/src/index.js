@@ -1,5 +1,6 @@
 
 export { api, createModuleApi, consultarDocumento } from './services/api';
+export { useRealtime } from './services/useRealtime';
 export { useAuthStore } from './auth/authStore';
 export { EmpresaProvider, useModulos, useEmpresa, usePermiso, useSubmodulo } from './auth/EmpresaContext';
 export { useSucursalStore } from './store/sucursalStore';

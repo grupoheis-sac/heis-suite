@@ -229,7 +229,7 @@ function MainAppShell() {
       quickSearchActions={[
         { id: 'mesas-quick', title: 'Salón y Mesas (F1)', desc: 'Plano interactivo de mesas', path: '/mesas', category: 'Restaurante', badge: 'F1' },
         { id: 'cocina-quick', title: 'Cocina KDS', desc: 'Despacho de comandas en vivo', path: '/cocina', category: 'Restaurante', badge: 'En Vivo' },
-        { id: 'carta-quick', title: 'Carta & Menú', desc: 'Precios y platos del restaurante', path: '/menu', category: 'Restaurante' },
+        { id: 'sunat-quick', title: 'Facturación SUNAT UBL 2.1', desc: 'Boletas, Facturas, Notas de Crédito y XML', path: '/facturacion-sunat', category: 'Core Fiscal', badge: 'UBL 2.1' },
       ]}
     >
       <Suspense fallback={<PageLoader />}>

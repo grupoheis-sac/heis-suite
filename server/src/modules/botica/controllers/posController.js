@@ -11,6 +11,7 @@ import {
 } from '../models/index.js';
 import { Usuario, CajaGeneral, CajaMovimientoGeneral } from '../../../core/models/index.js';
 import { emitirComprobanteUniversal } from '../../../core/services/sunatUbl.service.js';
+import { emitTenantEvent } from '../../../core/services/realtime.service.js';
 
 export const getVentas = async (req, res) => {
   try {
@@ -314,6 +315,9 @@ export const crearVenta = async (req, res) => {
 
     await t.commit();
 
+    emitTenantEvent(req.empresa_id, 'caja:updated', { venta_id: venta.id, total }, req.sucursal_id);
+    emitTenantEvent(req.empresa_id, 'venta:created', { venta_id: venta.id, modulo: 'botica' }, req.sucursal_id);
+
     // Retornar venta completa
     const ventaCreada = await Venta.findByPk(venta.id, {
       include: [
@@ -393,6 +397,9 @@ export const anularVenta = async (req, res) => {
     }
 
     await t.commit();
+
+    emitTenantEvent(req.empresa_id, 'caja:updated', { venta_id: venta.id, total }, req.sucursal_id);
+    emitTenantEvent(req.empresa_id, 'venta:created', { venta_id: venta.id, modulo: 'botica' }, req.sucursal_id);
     res.json({ success: true, message: 'Venta anulada correctamente y stock reincorporado' });
   } catch (error) {
     await t.rollback();
